@@ -141,63 +141,70 @@ class RegraSantanderEspecifica {
   }
 
   /// SS002 — Convênio deve ter exatamente 7 dígitos (Santander)
+  /// H7815 V8.5: O convênio (7 dígitos) é gravado nos primeiros 7 chars
+  /// do campo Código de Transmissão (posição 033-047 do Header de Arquivo)
   static ResultadoRegra sS002ConvenioSeteSDigitos(
       String headerArquivo, int numLinha) {
     final sw = Stopwatch()..start();
-    if (headerArquivo.length < 42) {
+    if (headerArquivo.length < 39) {
       return ResultadoRegra.sucesso('SS002', tempoMs: sw.elapsedMilliseconds);
     }
 
-    // Posição 36-42 (índice 35-41)
-    final convenio = headerArquivo.substring(35, 42);
+    // H7815: pos 033-047 = Código Transmissão (15 chars)
+    // Os primeiros 7 chars = convênio (pos 033-039, índice 32-38)
+    final convenio = headerArquivo.substring(32, 39);
     if (!RegExp(r'^\d{7}$').hasMatch(convenio)) {
       return ResultadoRegra.falha('SS002', [
         ErroValidacao(
           codigo: 'SS002',
           descricao: 'Convênio Santander deve ter exatamente 7 dígitos numéricos',
-          detalhe: 'Encontrado: "$convenio"',
+          detalhe: 'Encontrado: "$convenio" (pos 33-39 do Header)',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.santander,
           linha: numLinha,
-          posicaoInicio: 36,
-          posicaoFim: 42,
-          campoCnab: 'Código do Convênio Santander',
+          posicaoInicio: 33,
+          posicaoFim: 39,
+          campoCnab: 'Código do Convênio Santander (início do Código Transmissão)',
           sugestaoCorrecao:
-              'O código de convênio Santander tem 7 dígitos. Consulte seu gerente',
-          referenciaFebraban: 'Santander CNAB 240 — Convênio = 7 dígitos',
+              'O código de convênio Santander tem 7 dígitos. Consulte seu gerente Santander',
+          referenciaFebraban: 'H7815 V8.5 — Código Transmissão pos 033-047: primeiros 7 = convênio',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SS002', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SS003 — Carteiras válidas Santander: 101, 102, 104, 201
+  /// SS003 — Tipo de Cobrança válido para Santander (H7815 Nota 5)
+  /// No H7815: posição 58 = 1 char (1=Simples, 3=Caucionada, 4=Descontada, 5=Simples Rápida, etc.)
+  /// Mapeamento da carteira interna: 101→1, 102→5, 104→3, 201→4
   static ResultadoRegra sS003CarteirasValidas(List<String> segmentosP) {
     final sw = Stopwatch()..start();
     final erros = <ErroValidacao>[];
-    const validas = {'101', '102', '104', '201'};
+    // H7815 Nota 5: tipos válidos na posição 58 do Segmento P
+    const validas = {'1', '3', '4', '5', '6', '7', '8', '9', 'B'};
 
     for (int i = 0; i < segmentosP.length; i++) {
       final seg = segmentosP[i];
-      if (seg.length < 35) continue;
+      // H7815: Tipo de Cobrança na posição 58 (índice 57), 1 char
+      if (seg.length < 58) continue;
 
-      final cart = seg.substring(32, 35);
-      if (!validas.contains(cart)) {
+      final tipoCobranca = seg.substring(57, 58);
+      if (!validas.contains(tipoCobranca)) {
         erros.add(ErroValidacao(
           codigo: 'SS003',
-          descricao: 'Código de carteira inválido para Santander',
+          descricao: 'Tipo de Cobrança inválido para Santander (posição 58)',
           detalhe:
-              'Carteira: "$cart" | Carteiras aceitas: 101, 102, 104, 201',
+              'Tipo: "$tipoCobranca" | H7815 Nota 5: 1=Simples, 3=Caucionada, 4=Descontada, 5=Simples Rápida',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.santander,
-          posicaoInicio: 33,
-          posicaoFim: 35,
-          campoCnab: 'Carteira Santander',
+          posicaoInicio: 58,
+          posicaoFim: 58,
+          campoCnab: 'Tipo de Cobrança (H7815 Nota 5)',
           indiceTitulo: i,
           tipoSegmento: 'P',
           sugestaoCorrecao:
-              '101=Simples, 102=Vinculada, 104=Caucionada, 201=Descontada',
-          referenciaFebraban: 'Santander CNAB 240 — Carteiras: 101/102/104/201',
+              'Use 1=Simples (carteira 101), 3=Caucionada (104), 4=Descontada (201), 5=Simples Rápida (102)',
+          referenciaFebraban: 'H7815 V8.5 Nota 5 — Tipo de Cobrança Remessa',
         ));
       }
     }

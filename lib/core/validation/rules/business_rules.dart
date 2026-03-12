@@ -88,10 +88,10 @@ class RegraNegocios {
 
     for (int i = 0; i < segmentosP.length; i++) {
       final seg = segmentosP[i];
-      if (seg.length < 52) continue;
+      if (seg.length < 57) continue;
 
-      // Nosso número: posição 33-52 (índice 32-51)
-      final nossoNum = seg.substring(32, 52).trim();
+      // H7815 V8.5: Nosso Número na posição 45-57 (índice 44-56), 13 dígitos numéricos
+      final nossoNum = seg.substring(44, 57).trim();
       if (nossoNum.isEmpty || RegExp(r'^0+$').hasMatch(nossoNum)) continue;
 
       if (nossoNumeros.containsKey(nossoNum)) {
@@ -104,15 +104,15 @@ class RegraNegocios {
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.negocio,
           linha: i < linhasP.length ? linhasP[i] : i + 1,
-          posicaoInicio: 33,
-          posicaoFim: 52,
-          campoCnab: 'Identificação do Título no Banco',
+          posicaoInicio: 45,
+          posicaoFim: 57,
+          campoCnab: 'Identificação do Boleto no Banco (Nosso Número)',
           indiceTitulo: i,
           tipoSegmento: 'P',
           sugestaoCorrecao:
-              'Cada título deve ter um Nosso Número único. Renumere os títulos',
+              'Cada título deve ter um Nosso Número único (13 dígitos, pos 45-57 H7815). Renumere os títulos',
           referenciaFebraban:
-              'FEBRABAN CNAB 240 v10.7 — Nosso Número: identificação única do título',
+              'H7815 V8.5 Nota 15 — Nosso Número: 13 posições únicas por boleto',
         ));
       } else {
         nossoNumeros[nossoNum] = i < linhasP.length ? linhasP[i] : i + 1;
@@ -307,35 +307,41 @@ class RegraNegocios {
     return ResultadoRegra.sucesso('BR008', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// BR009 — Carteira no Segmento P deve ser consistente no arquivo inteiro
+  /// BR009 — Tipo de Cobrança no Segmento P deve ser válido (H7815 Nota 5)
   static ResultadoRegra bR009CarteiraCodigo(List<String> segmentosP) {
     final sw = Stopwatch()..start();
-    final carteiras = <String>{};
+    final tiposCobranca = <String>{};
 
     for (final seg in segmentosP) {
-      if (seg.length < 35) continue;
-      final cart = seg.substring(32, 35);
-      if (RegExp(r'^\d{3}$').hasMatch(cart)) {
-        carteiras.add(cart);
+      if (seg.length < 58) continue;
+      // H7815 V8.5: Tipo de Cobrança na posição 58 (índice 57), 1 char
+      final tipoCobranca = seg.substring(57, 58);
+      if (RegExp(r'^[1-9B]$').hasMatch(tipoCobranca)) {
+        tiposCobranca.add(tipoCobranca);
       }
     }
 
-    const carteirasValidas = {'101', '102', '104', '201'};
-    final invalidas = carteiras.difference(carteirasValidas);
+    // H7815 Nota 5: tipos válidos para remessa
+    const tiposValidos = {'1', '3', '4', '5', '6', '7', '8', '9', 'B'};
+    final invalidos = tiposCobranca.difference(tiposValidos);
 
-    if (invalidas.isNotEmpty) {
+    if (invalidos.isNotEmpty) {
       return ResultadoRegra.falha('BR009', [
         ErroValidacao(
           codigo: 'BR009',
           descricao:
-              'Carteiras inválidas encontradas no arquivo: ${invalidas.join(', ')}',
-          detalhe: 'Carteiras válidas para Santander: 101, 102, 104, 201',
+              'Tipo de Cobrança inválido no Segmento P (posição 58): ${invalidos.join(', ')}',
+          detalhe:
+              'H7815 Nota 5: 1=Simples, 3=Caucionada, 4=Descontada, 5=Simples Rápida, B=Simples s/Reg',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.negocio,
+          posicaoInicio: 58,
+          posicaoFim: 58,
+          campoCnab: 'Tipo de Cobrança (Carteira)',
           sugestaoCorrecao:
-              'Corrija o código de carteira nos títulos afetados',
+              'Use 1=Cobrança Simples (mais comum) conforme H7815 V8.5 Nota 5',
           referenciaFebraban:
-              'Santander: 101=Simples, 102=Vinculada, 104=Caucionada, 201=Descontada',
+              'H7815 V8.5 Nota 5 — Tipo de Cobrança Remessa',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }

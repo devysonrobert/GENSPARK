@@ -252,9 +252,8 @@ class CnabSantander240Builder {
     sb.write(_numerico(empresa.contaCorrente, 9));
 
     // [032-032] Dígito verificador da conta — 1 num
-    sb.write(_calcularDigitoConta(
-        empresa.agencia.padLeft(4, '0'),
-        empresa.contaCorrente.padLeft(9, '0')));
+    // DAC = Módulo11(AG(4) + Conta(8)) — algoritmo Santander
+    sb.write(_calcularDigitoConta(empresa.agencia, empresa.contaCorrente));
 
     // [033-041] Conta cobrança Destinatária FIDC — 9 zeros (campo reservado)
     sb.write(_numerico('0', 9));
@@ -584,6 +583,12 @@ class CnabSantander240Builder {
     // Total do lote: HL + registros detalhe + TL
     final int totalRegistrosLote = 1 + totalRegistrosDetalhe + 1;
 
+    // Calcular valor total dos títulos em centavos
+    int valorTotalCentavos = 0;
+    for (final t in titulos) {
+      valorTotalCentavos += (t.valorNominal * 100).round();
+    }
+
     final sb = StringBuffer();
 
     // [001-003] Código do Banco na compensação — 3 num
@@ -601,8 +606,15 @@ class CnabSantander240Builder {
     // [018-023] Quantidade de registros do lote — 6 num
     sb.write(_numerico(totalRegistrosLote.toString(), 6));
 
-    // [024-240] Reservado (uso Banco) — 217 brancos
-    sb.write(_brancos(217));
+    // [024-029] Quantidade de títulos em carteira — 6 num
+    sb.write(_numerico(titulos.length.toString(), 6));
+
+    // [030-046] Valor total dos títulos em carteira — 17 num (2 decimais)
+    // FEBRABAN posição 30-46: 17 dígitos, últimos 2 = centavos
+    sb.write(valorTotalCentavos.toString().padLeft(17, '0'));
+
+    // [047-240] Reservado (uso Banco) — 194 brancos
+    sb.write(_brancos(194));
 
     final linha = sb.toString();
     assert(linha.length == 240,
@@ -743,10 +755,15 @@ class CnabSantander240Builder {
   // ══════════════════════════════════════════════════════════════
 
   /// Calcula dígito verificador da conta Santander — Módulo 11 pesos 2-9
-  /// Base: Agência(4) + Conta(9) da direita para a esquerda
+  /// Base: Agência(4) + Conta(8) — algoritmo padrão Santander
+  /// ATENÇÃO: O DAC usa 8 dígitos da conta (não 9), mesmo que o campo tenha 9 posições
   String _calcularDigitoConta(String agencia, String conta) {
-    // H7815: conta tem 9 posições no segmento P
-    final base = '${agencia.padLeft(4, '0')}${conta.padLeft(9, '0')}';
+    // Santander: DAC = Módulo11(AG(4) + Conta(8))
+    final contaLimpa = conta.replaceAll(RegExp(r'\D'), '');
+    final conta8 = contaLimpa.length > 8
+        ? contaLimpa.substring(contaLimpa.length - 8)
+        : contaLimpa.padLeft(8, '0');
+    final base = '${agencia.padLeft(4, '0')}$conta8';
     int soma = 0;
     int peso = 2;
     for (int i = base.length - 1; i >= 0; i--) {
