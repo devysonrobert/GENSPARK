@@ -183,58 +183,151 @@ class _ValidacaoScreenState extends ConsumerState<ValidacaoScreen> {
   void _exportarPdfRelatorio() {
     if (_relatorio == null) return;
 
-    // Gerar relatório como texto formatado e download como .txt (PDF real requer lib pdf)
-    final buffer = StringBuffer();
-    buffer.writeln('=' * 60);
-    buffer.writeln('RELATÓRIO DE VALIDAÇÃO CNAB 240 — SANTANDER');
-    buffer.writeln('=' * 60);
-    buffer.writeln('Data: ${DateTime.now().toString().substring(0, 19)}');
-    buffer.writeln('Arquivo: ${_relatorio!.nomeArquivo ?? "não informado"}');
-    buffer.writeln('Status: ${_relatorio!.statusLabel}');
-    buffer.writeln('Score de Qualidade: ${_relatorio!.qualityScore}/100');
-    buffer.writeln('Tempo de validação: ${_relatorio!.tempoTotalMs}ms');
-    buffer.writeln('');
-    buffer.writeln('RESUMO:');
-    buffer.writeln('  Fatais: ${_relatorio!.totalFatais}');
-    buffer.writeln('  Erros:  ${_relatorio!.totalErros}');
-    buffer.writeln('  Avisos: ${_relatorio!.totalAvisos}');
-    buffer.writeln('  Infos:  ${_relatorio!.totalInfos}');
+    // Formata valor monetário
+    String fmt(double v) {
+      final s = v.toStringAsFixed(2).replaceAll('.', ',');
+      final partes = s.split(',');
+      final inteiro = partes[0];
+      final dec = partes[1];
+      final buffer = StringBuffer();
+      for (int i = 0; i < inteiro.length; i++) {
+        if (i > 0 && (inteiro.length - i) % 3 == 0) buffer.write('.');
+        buffer.write(inteiro[i]);
+      }
+      return 'R\$ ${buffer.toString()},$dec';
+    }
 
+    // Gerar relatório como texto formatado
+    final buffer = StringBuffer();
+    buffer.writeln('=' * 72);
+    buffer.writeln('RELATÓRIO DE VALIDAÇÃO CNAB 240 — SANTANDER');
+    buffer.writeln('=' * 72);
+    buffer.writeln('Data/Hora : ${DateTime.now().toString().substring(0, 19)}');
+    buffer.writeln('Arquivo   : ${_relatorio!.nomeArquivo ?? "não informado"}');
+    buffer.writeln('Status    : ${_relatorio!.statusLabel}');
+    buffer.writeln('Score     : ${_relatorio!.qualityScore}/100');
+    buffer.writeln('Tempo     : ${_relatorio!.tempoTotalMs}ms');
+    buffer.writeln('');
+
+    // ── Resumo de ocorrências ──────────────────────────────────────────────
+    buffer.writeln('RESUMO DE OCORRÊNCIAS:');
+    buffer.writeln('  Fatais : ${_relatorio!.totalFatais}');
+    buffer.writeln('  Erros  : ${_relatorio!.totalErros}');
+    buffer.writeln('  Avisos : ${_relatorio!.totalAvisos}');
+    buffer.writeln('  Infos  : ${_relatorio!.totalInfos}');
+
+    // ── Estatísticas do arquivo ────────────────────────────────────────────
     if (_relatorio!.estatisticas != null) {
       final est = _relatorio!.estatisticas!;
       buffer.writeln('');
       buffer.writeln('ESTATÍSTICAS DO ARQUIVO:');
-      buffer.writeln('  Total de linhas: ${est.totalLinhas}');
-      buffer.writeln('  Total de lotes: ${est.totalLotes}');
-      buffer.writeln('  Total de títulos: ${est.totalTitulos}');
-      buffer.writeln('  Valor total: R\$ ${est.valorTotal.toStringAsFixed(2)}');
+      buffer.writeln('  Total de linhas  : ${est.totalLinhas}');
+      buffer.writeln('  Total de lotes   : ${est.totalLotes}');
+      buffer.writeln('  Total de títulos : ${est.totalTitulos}');
+      buffer.writeln('  Valor total      : ${fmt(est.valorTotal)}');
     }
 
+    // ── Títulos da remessa (vencimentos e valores) ─────────────────────────
+    final titulos = ref.read(titulosProvider);
+    if (titulos.isNotEmpty) {
+      buffer.writeln('');
+      buffer.writeln('TÍTULOS DA REMESSA:');
+      buffer.writeln('-' * 72);
+      buffer.writeln(
+        '${'#'.padRight(4)} '
+        '${'Nosso Número'.padRight(20)} '
+        '${'Sacado'.padRight(30)} '
+        '${'Vencimento'.padRight(12)} '
+        '${'Valor'.padRight(16)} '
+        'Status',
+      );
+      buffer.writeln('-' * 72);
+      double totalGeral = 0.0;
+      for (int i = 0; i < titulos.length; i++) {
+        final t = titulos[i];
+        totalGeral += t.valorNominal;
+        final dtVenc = t.dataVencimento != null
+            ? '${t.dataVencimento!.day.toString().padLeft(2, '0')}/'
+              '${t.dataVencimento!.month.toString().padLeft(2, '0')}/'
+              '${t.dataVencimento!.year}'
+            : '——/——/————';
+        final sacado = t.nomeSacado.length > 28
+            ? '${t.nomeSacado.substring(0, 27)}…'
+            : t.nomeSacado;
+        final statusStr = t.status.name.toUpperCase();
+        final origem = t.origemXml != null ? ' [XML]' : '';
+        buffer.writeln(
+          '${(i + 1).toString().padRight(4)} '
+          '${t.seuNumero.padRight(20)} '
+          '${sacado.padRight(30)} '
+          '${dtVenc.padRight(12)} '
+          '${fmt(t.valorNominal).padRight(16)} '
+          '$statusStr$origem',
+        );
+        // Mostrar erros do título se houver
+        if (t.erros.isNotEmpty) {
+          for (final err in t.erros) {
+            buffer.writeln('       ⚠ $err');
+          }
+        }
+      }
+      buffer.writeln('-' * 72);
+      buffer.writeln(
+        '${'TOTAL'.padRight(4)} '
+        '${' '.padRight(20)} '
+        '${' '.padRight(30)} '
+        '${' '.padRight(12)} '
+        '${fmt(totalGeral).padRight(16)} '
+        '${titulos.length} título(s)',
+      );
+    }
+
+    // ── Checklist obrigatório ──────────────────────────────────────────────
     buffer.writeln('');
     buffer.writeln('CHECKLIST OBRIGATÓRIO:');
+    buffer.writeln('-' * 72);
     _relatorio!.checklistObrigatorio.forEach((k, v) {
-      buffer.writeln('  [${v ? 'OK' : 'FALHOU'}] $k');
+      final icone = v ? '✓ OK    ' : '✗ FALHOU';
+      buffer.writeln('  [$icone] $k');
     });
 
+    // ── Ocorrências agrupadas por severidade ───────────────────────────────
     buffer.writeln('');
     buffer.writeln('OCORRÊNCIAS:');
-    buffer.writeln('-' * 60);
+    buffer.writeln('-' * 72);
 
-    for (final erro in _relatorio!.erros) {
+    // Fatais primeiro
+    final fatais = _relatorio!.errosFatais;
+    final errosGraves = _relatorio!.errosGraves;
+    final avisos = _relatorio!.avisos;
+    final infos = _relatorio!.infos;
+
+    void escreverGrupo(String titulo, List<dynamic> lista) {
+      if (lista.isEmpty) return;
       buffer.writeln('');
-      buffer.writeln('[${erro.labelSeveridade}] ${erro.codigo} — ${erro.descricao}');
-      if (erro.detalhe != null) buffer.writeln('  Detalhe: ${erro.detalhe}');
-      if (erro.linha != null) buffer.writeln('  Linha: ${erro.linha}');
-      if (erro.posicaoInicio != null) {
-        buffer.writeln('  Posição FEBRABAN: ${erro.posicaoInicio}${erro.posicaoFim != null ? '-${erro.posicaoFim}' : ''}');
+      buffer.writeln('── $titulo (${lista.length}) ──');
+      for (final erro in lista) {
+        buffer.writeln('');
+        buffer.writeln('[${erro.labelSeveridade}] ${erro.codigo} — ${erro.descricao}');
+        if (erro.detalhe != null) buffer.writeln('  Detalhe  : ${erro.detalhe}');
+        if (erro.linha != null) buffer.writeln('  Linha    : ${erro.linha}');
+        if (erro.posicaoInicio != null) {
+          final pos = '${erro.posicaoInicio}${erro.posicaoFim != null && erro.posicaoFim != erro.posicaoInicio ? '-${erro.posicaoFim}' : ''}';
+          buffer.writeln('  Posição  : $pos');
+        }
+        if (erro.campoCnab != null) buffer.writeln('  Campo    : ${erro.campoCnab}');
+        if (erro.sugestaoCorrecao != null) buffer.writeln('  Sugestão : ${erro.sugestaoCorrecao}');
+        if (erro.referenciaFebraban != null) buffer.writeln('  Ref      : ${erro.referenciaFebraban}');
       }
-      if (erro.campoCnab != null) buffer.writeln('  Campo CNAB: ${erro.campoCnab}');
-      if (erro.sugestaoCorrecao != null) buffer.writeln('  Sugestão: ${erro.sugestaoCorrecao}');
-      if (erro.referenciaFebraban != null) buffer.writeln('  Ref: ${erro.referenciaFebraban}');
     }
 
+    escreverGrupo('FATAIS', fatais);
+    escreverGrupo('ERROS', errosGraves);
+    escreverGrupo('AVISOS', avisos);
+    escreverGrupo('INFORMAÇÕES', infos);
+
     buffer.writeln('');
-    buffer.writeln('=' * 60);
+    buffer.writeln('=' * 72);
     buffer.writeln('FIM DO RELATÓRIO');
 
     // Download como .txt
