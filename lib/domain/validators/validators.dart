@@ -170,8 +170,19 @@ class ValidadorContaSantander {
 }
 
 class ValidadorData {
-  static ValidationResult validar(DateTime? data,
-      {bool permitirPassado = false, bool verificarFeriado = true}) {
+  /// Valida uma data de vencimento.
+  ///
+  /// - [permitirPassado]: se true, não rejeita datas anteriores a hoje
+  ///   (usado para títulos importados de XML com data original da nota).
+  /// - [verificarFeriado]: se true, rejeita feriados bancários nacionais.
+  /// - [verificarFimDeSemana]: se true (padrão), rejeita sábado e domingo.
+  ///   Para XMLs importados deve ser false pois a data da nota é histórica.
+  static ValidationResult validar(
+    DateTime? data, {
+    bool permitirPassado = false,
+    bool verificarFeriado = true,
+    bool verificarFimDeSemana = true,
+  }) {
     if (data == null) {
       return const ValidationResult(isValid: false, error: 'Data obrigatória');
     }
@@ -186,12 +197,13 @@ class ValidadorData {
           error: 'Data de vencimento não pode ser anterior a hoje');
     }
 
-    // Verificar fim de semana
-    if (data.weekday == DateTime.saturday || data.weekday == DateTime.sunday) {
+    // Verificar fim de semana (somente para títulos manuais)
+    if (verificarFimDeSemana &&
+        (data.weekday == DateTime.saturday || data.weekday == DateTime.sunday)) {
+      final nomeDia = data.weekday == DateTime.saturday ? 'sábado' : 'domingo';
       return ValidationResult(
           isValid: false,
-          error:
-              'Data de vencimento não pode ser sábado (${data.weekday == 6 ? "sábado" : "domingo"})');
+          error: 'Data de vencimento não pode ser $nomeDia');
     }
 
     // Verificar feriados bancários
@@ -233,23 +245,47 @@ class ValidadorData {
 }
 
 class ValidadorCamposObrigatorios {
+  /// Valida todos os campos obrigatórios de um título.
+  ///
+  /// Títulos importados de XML (origemXml != null) recebem tratamento
+  /// diferenciado: datas no passado, em fim de semana ou feriado são
+  /// aceitas pois refletem a data original do documento fiscal.
   static List<String> validarTitulo(Titulo titulo) {
     final erros = <String>[];
 
+    // Detecta se o título veio de importação XML
+    final isDeXml = titulo.origemXml != null && titulo.origemXml!.isNotEmpty;
+
+    // ── Campos básicos ──────────────────────────────────────
     if (titulo.seuNumero.trim().isEmpty) {
       erros.add('Seu Número (Nosso Número) é obrigatório');
     }
-    if (titulo.dataVencimento == null) {
-      erros.add('Data de Vencimento é obrigatória');
-    }
+
     if (titulo.valorNominal <= 0) {
       erros.add('Valor Nominal deve ser maior que zero');
     }
-    if (titulo.cpfCnpjSacado.replaceAll(RegExp(r'\D'), '').isEmpty) {
+
+    // ── Data de Vencimento ──────────────────────────────────
+    if (titulo.dataVencimento == null) {
+      erros.add('Data de Vencimento é obrigatória');
+    } else {
+      // XMLs importados: permitir passado, fim de semana e feriado
+      // pois a data é histórica (data original da nota fiscal).
+      // Títulos manuais: validação completa.
+      final validData = ValidadorData.validar(
+        titulo.dataVencimento,
+        permitirPassado: isDeXml,
+        verificarFeriado: !isDeXml,
+        verificarFimDeSemana: !isDeXml,
+      );
+      if (!validData.isValid) erros.add(validData.error!);
+    }
+
+    // ── Sacado — documento ──────────────────────────────────
+    final docLimpo = titulo.cpfCnpjSacado.replaceAll(RegExp(r'\D'), '');
+    if (docLimpo.isEmpty) {
       erros.add('CPF/CNPJ do Sacado é obrigatório');
     } else {
-      final docLimpo =
-          titulo.cpfCnpjSacado.replaceAll(RegExp(r'\D'), '');
       if (titulo.tipoInscricaoSacado == TipoInscricao.cnpj) {
         final result = ValidadorCNPJ.validar(docLimpo);
         if (!result.isValid) erros.add('CNPJ do Sacado: ${result.error}');
@@ -258,6 +294,8 @@ class ValidadorCamposObrigatorios {
         if (!result.isValid) erros.add('CPF do Sacado: ${result.error}');
       }
     }
+
+    // ── Sacado — endereço ───────────────────────────────────
     if (titulo.nomeSacado.trim().isEmpty) {
       erros.add('Nome do Sacado é obrigatório');
     }
@@ -270,14 +308,8 @@ class ValidadorCamposObrigatorios {
     if (titulo.cidadeSacado.trim().isEmpty) {
       erros.add('Cidade do Sacado é obrigatória');
     }
-    if (titulo.ufSacado.length != 2) {
+    if (titulo.ufSacado.trim().length != 2) {
       erros.add('UF do Sacado é obrigatória (2 letras)');
-    }
-
-    // Valida vencimento
-    if (titulo.dataVencimento != null) {
-      final validData = ValidadorData.validar(titulo.dataVencimento);
-      if (!validData.isValid) erros.add(validData.error!);
     }
 
     return erros;

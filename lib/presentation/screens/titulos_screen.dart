@@ -547,13 +547,31 @@ class _TituloRowState extends State<_TituloRow> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    t.nomeSacado,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      if (t.origemXml != null && t.origemXml!.isNotEmpty)
+                        Tooltip(
+                          message: 'Importado de XML: ${t.origemXml}',
+                          child: const Padding(
+                            padding: EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.description_outlined,
+                              size: 12,
+                              color: AppColors.info,
+                            ),
+                          ),
+                        ),
+                      Expanded(
+                        child: Text(
+                          t.nomeSacado,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                   if (t.cidadeSacado.isNotEmpty)
                     Text(
@@ -577,14 +595,34 @@ class _TituloRowState extends State<_TituloRow> {
             SizedBox(
               width: 110,
               child: t.dataVencimento != null
-                  ? Text(
-                      DateFormat('dd/MM/yyyy')
-                          .format(t.dataVencimento!),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _vencimentoColor(t.dataVencimento!),
-                        fontWeight: FontWeight.w500,
-                      ),
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          DateFormat('dd/MM/yyyy')
+                              .format(t.dataVencimento!),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _vencimentoColor(
+                                t.dataVencimento!,
+                                isXml: t.origemXml != null &&
+                                    t.origemXml!.isNotEmpty),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        // Indicador visual para XMLs com data vencida
+                        if ((t.origemXml != null && t.origemXml!.isNotEmpty) &&
+                            t.dataVencimento!.isBefore(DateTime.now()))
+                          const Text(
+                            'orig. NF-e',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: AppColors.textSecondary,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                      ],
                     )
                   : const Text(
                       '⚠ Pendente',
@@ -653,10 +691,14 @@ class _TituloRowState extends State<_TituloRow> {
     );
   }
 
-  Color _vencimentoColor(DateTime data) {
+  /// Cor do vencimento.
+  /// - XMLs importados: datas no passado ficam em laranja (informativo),
+  ///   não em vermelho (erro) — pois a data é histórica.
+  /// - Títulos manuais: passado = vermelho, próximo 5 dias = laranja.
+  Color _vencimentoColor(DateTime data, {bool isXml = false}) {
     final hoje = DateTime.now();
     final diff = data.difference(hoje).inDays;
-    if (diff < 0) return AppColors.error;
+    if (diff < 0) return isXml ? AppColors.warning : AppColors.error;
     if (diff <= 5) return AppColors.warning;
     return AppColors.textPrimary;
   }

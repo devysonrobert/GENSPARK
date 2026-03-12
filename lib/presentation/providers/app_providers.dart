@@ -131,12 +131,16 @@ class TitulosNotifier extends StateNotifier<List<Titulo>> {
     final erros = ValidadorCamposObrigatorios.validarTitulo(titulo);
     StatusTitulo status;
     if (erros.isEmpty) {
+      // Título completamente válido — pronto para geração
       status = StatusTitulo.valido;
     } else {
+      // Erro grave: documento inválido, valor zero, nosso número vazio
       final temErroGrave = erros.any((e) =>
           e.contains('inválido') ||
           e.contains('CNPJ') ||
-          e.contains('CPF'));
+          e.contains('CPF') ||
+          e.contains('maior que zero') ||
+          e.contains('Nosso Número'));
       status = temErroGrave ? StatusTitulo.invalido : StatusTitulo.pendente;
     }
     return titulo.copyWith(status: status, erros: erros);

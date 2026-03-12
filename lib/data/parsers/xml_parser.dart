@@ -77,6 +77,40 @@ class XmlNfeParser {
         dataEmissao = DateTime.now();
       }
 
+      // ── Data de Vencimento ────────────────────────────────
+      // A NF-e pode ter cobranças (cobr > dup > dVenc) com a data real
+      // Caso não exista, calculamos +30 dias da emissão como padrão
+      DateTime? dataVencimento;
+      try {
+        // Tenta extrair do bloco <cobr><dup><dVenc>
+        final cobr = infNFe.findElements('cobr').firstOrNull;
+        if (cobr != null) {
+          final dup = cobr.findElements('dup').firstOrNull;
+          if (dup != null) {
+            final dVenc = _getTextPath(dup, 'dVenc') ?? '';
+            if (dVenc.isNotEmpty) {
+              dataVencimento = DateTime.parse(dVenc.substring(0, 10));
+            }
+          }
+        }
+        // Tenta tag <dVenc> diretamente em qualquer nível
+        if (dataVencimento == null) {
+          final dVencStr = _findTextDeep(infNFe, 'dVenc') ?? '';
+          if (dVencStr.isNotEmpty) {
+            dataVencimento = DateTime.parse(dVencStr.substring(0, 10));
+          }
+        }
+        // Tenta tag <dataVencimento> (alguns layouts específicos)
+        if (dataVencimento == null) {
+          final dVencStr2 = _findTextDeep(infNFe, 'dataVencimento') ?? '';
+          if (dVencStr2.isNotEmpty) {
+            dataVencimento = DateTime.parse(dVencStr2.substring(0, 10));
+          }
+        }
+      } catch (_) {}
+      // Fallback: +30 dias a partir da data de emissão
+      dataVencimento ??= (dataEmissao ?? DateTime.now()).add(const Duration(days: 30));
+
       // ── Valores ───────────────────────────────────────────
       final total = infNFe.findElements('total').firstOrNull;
       final icmsTot = total?.findElements('ICMSTot').firstOrNull;
@@ -97,7 +131,7 @@ class XmlNfeParser {
         especieTitulo: '01', // Duplicata Mercantil
         aceite: 'N',
         dataEmissao: dataEmissao,
-        dataVencimento: null, // Preencher manualmente
+        dataVencimento: dataVencimento,
         valorNominal: valorNominal,
         tipoInscricaoSacado:
             isDestCnpj ? TipoInscricao.cnpj : TipoInscricao.cpf,
@@ -205,6 +239,21 @@ class XmlNfeParser {
         dataEmissao = DateTime.now();
       }
 
+      // ── Data de Vencimento NFS-e ──────────────────────────
+      // NFS-e pode ter DataVencimento, DtVencimento ou similar
+      DateTime? dataVencimento;
+      try {
+        final dVencStr = _findTextDeep(rootNfse, 'DataVencimento') ??
+            _findTextDeep(rootNfse, 'DtVencimento') ??
+            _findTextDeep(rootNfse, 'dVenc') ??
+            _findTextDeep(rootNfse, 'DataPagamento') ?? '';
+        if (dVencStr.isNotEmpty) {
+          dataVencimento = DateTime.parse(dVencStr.substring(0, 10));
+        }
+      } catch (_) {}
+      // Fallback: +30 dias da emissão
+      dataVencimento ??= (dataEmissao ?? DateTime.now()).add(const Duration(days: 30));
+
       // Valor
       final servico = _findElementDeep(rootNfse, 'Servico') ??
           _findElementDeep(rootNfse, 'Valores');
@@ -226,7 +275,7 @@ class XmlNfeParser {
         especieTitulo: '02', // Duplicata de Serviço
         aceite: 'N',
         dataEmissao: dataEmissao,
-        dataVencimento: null,
+        dataVencimento: dataVencimento,
         valorNominal: valorNominal,
         tipoInscricaoSacado:
             isDestCnpj ? TipoInscricao.cnpj : TipoInscricao.cpf,
