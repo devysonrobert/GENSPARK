@@ -305,3 +305,31 @@ final historicoRemessasProvider = Provider<List<RemessaHistorico>>((ref) {
 });
 
 final historicoRefreshProvider = StateProvider<int>((ref) => 0);
+
+// ══════════════════════════════════════════════════════════════
+// ÚLTIMO ARQUIVO GERADO (para validação)
+// ══════════════════════════════════════════════════════════════
+
+/// Expõe o conteúdo do último arquivo CNAB gerado para a tela de validação
+final ultimoArquivoGeradoProvider = Provider<String?>((ref) {
+  final cnabGerado = ref.watch(cnabGeradoProvider);
+  return cnabGerado.conteudo;
+});
+
+// ══════════════════════════════════════════════════════════════
+// ÍNDICE DE PÁGINA ATUAL (para navegação programática)
+// ══════════════════════════════════════════════════════════════
+
+/// Provider que mapeia índice inteiro → AppScreen para compatibilidade
+/// com código que usa índice numérico de navegação
+final currentPageIndexProvider = StateProvider<int>((ref) {
+  final screen = ref.watch(currentScreenProvider);
+  return screen.index;
+});
+
+// ══════════════════════════════════════════════════════════════
+// RELATÓRIO DE VALIDAÇÃO (para integração com geração)
+// ══════════════════════════════════════════════════════════════
+
+// Importado aqui para uso nos providers de integração
+// RelatorioValidacao é importado inline onde necessário

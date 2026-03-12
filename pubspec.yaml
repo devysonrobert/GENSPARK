@@ -1,5 +1,5 @@
 name: cnab_master
-description: Sistema profissional para geração de arquivos CNAB 240 Santander - Cobrança de Boletos
+description: GL Solucoes - Sistema profissional para geração e validação de arquivos CNAB 240 Santander
 publish_to: 'none'
 version: 1.0.0+1
 

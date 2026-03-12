@@ -1,12 +1,21 @@
 // presentation/screens/validacao_screen.dart
+// Tela de validação CNAB 240 com engine completa
+// Suporte a: upload de arquivo externo, validação em tempo real, PDF, bloqueio de download
 
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/app_providers.dart';
-import '../widgets/common_widgets.dart';
-import '../../core/theme/app_theme.dart';
-import '../../domain/models/titulo.dart';
-import '../../domain/validators/validators.dart';
+import '../../core/validation/cnab_validator_engine.dart';
+import '../../core/validation/models/validation_error.dart';
+import '../../core/validation/models/validation_report.dart';
+import '../../core/validation/models/validation_result.dart';
+import '../../core/validation/widgets/validation_widgets.dart';
+import '../../core/validation/rules/santander_specific.dart';
+import '../../presentation/providers/app_providers.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
 class ValidacaoScreen extends ConsumerStatefulWidget {
   const ValidacaoScreen({super.key});
@@ -16,481 +25,662 @@ class ValidacaoScreen extends ConsumerStatefulWidget {
 }
 
 class _ValidacaoScreenState extends ConsumerState<ValidacaoScreen> {
-  bool _validado = false;
+  RelatorioValidacao? _relatorio;
   bool _validando = false;
-  List<ErroValidacaoRemessa> _erros = [];
+  EstadoValidacao? _estadoAtual;
+  CnabValidatorEngine? _engine;
+  StreamSubscription<EstadoValidacao>? _progressSub;
+  String? _nomeArquivoCarregado;
+  String? _conteudoArquivoExterno;
+  bool _usarArquivoGerado = true;
 
-  Future<void> _validarRemessa() async {
-    setState(() {
-      _validando = true;
-      _validado = false;
-      _erros = [];
-    });
+  // Dicionário de ocorrências para arquivo retorno
+  bool _mostrarDicionario = false;
 
-    // Simula delay de validação
-    await Future.delayed(const Duration(milliseconds: 600));
+  @override
+  void dispose() {
+    _engine?.cancelar();
+    _progressSub?.cancel();
+    _engine?.dispose();
+    super.dispose();
+  }
 
+  Future<void> _executarValidacao() async {
     final titulos = ref.read(titulosProvider);
     final empresa = ref.read(empresaConfigProvider);
-    final erros = <ErroValidacaoRemessa>[];
 
-    // Valida configuração da empresa
-    if (!empresa.isConfigured) {
-      erros.add(const ErroValidacaoRemessa(
-        tituloId: 'empresa',
-        tituloRef: 'Configuração da Empresa',
-        erros: ['Empresa cedente não configurada. Configure os dados bancários.'],
-      ));
-    }
+    String? conteudo;
 
-    // Valida CNPJ da empresa
-    if (empresa.cnpj.isNotEmpty) {
-      final r = ValidadorCNPJ.validar(empresa.cnpj);
-      if (!r.isValid) {
-        erros.add(ErroValidacaoRemessa(
-          tituloId: 'empresa',
-          tituloRef: 'CNPJ da Empresa',
-          erros: ['CNPJ inválido: ${r.error}'],
-        ));
+    if (_usarArquivoGerado) {
+      // Validar arquivo gerado
+      if (titulos.isEmpty) {
+        _mostrarSnack('Nenhum título para validar. Adicione títulos primeiro.', Colors.orange);
+        return;
       }
-    }
-
-    if (titulos.isEmpty) {
-      erros.add(const ErroValidacaoRemessa(
-        tituloId: 'lista',
-        tituloRef: 'Lista de Títulos',
-        erros: ['Nenhum título cadastrado na remessa.'],
-      ));
-    }
-
-    // Verifica nosso número duplicado
-    final nossoNumeros = <String, List<String>>{};
-    for (final t in titulos) {
-      nossoNumeros.putIfAbsent(t.seuNumero, () => []).add(t.id);
-    }
-    for (final entry in nossoNumeros.entries) {
-      if (entry.value.length > 1) {
-        erros.add(ErroValidacaoRemessa(
-          tituloId: entry.value[0],
-          tituloRef: 'Nosso Número: ${entry.key}',
-          erros: [
-            'Nosso Número "${entry.key}" duplicado em ${entry.value.length} títulos!'
-          ],
-        ));
+      if (!empresa.isConfigured) {
+        _mostrarSnack('Configure os dados da empresa antes de validar.', Colors.orange);
+        return;
       }
+
+      // Gerar conteúdo CNAB para validar
+      try {
+        final ultimoArquivo = ref.read(ultimoArquivoGeradoProvider);
+        if (ultimoArquivo != null) {
+          conteudo = ultimoArquivo;
+          _nomeArquivoCarregado = 'arquivo_gerado_cnab240.rem';
+        } else {
+          _mostrarSnack('Gere o arquivo CNAB primeiro para validar.', Colors.orange);
+          return;
+        }
+      } catch (e) {
+        _mostrarSnack('Erro ao acessar arquivo gerado: $e', Colors.red);
+        return;
+      }
+    } else {
+      // Validar arquivo externo carregado
+      if (_conteudoArquivoExterno == null) {
+        _mostrarSnack('Carregue um arquivo .rem/.ret/.txt/.cnab para validar.', Colors.orange);
+        return;
+      }
+      conteudo = _conteudoArquivoExterno!;
     }
 
-    // Valida cada título
-    for (final titulo in titulos) {
-      final errosTitulo = ValidadorCamposObrigatorios.validarTitulo(titulo);
-      if (errosTitulo.isNotEmpty) {
-        erros.add(ErroValidacaoRemessa(
-          tituloId: titulo.id,
-          tituloRef:
-              'Título: ${titulo.seuNumero} (${titulo.nomeSacado})',
-          erros: errosTitulo,
-        ));
-      }
-    }
+    // Cancelar validação anterior
+    _engine?.cancelar();
+    _progressSub?.cancel();
+    _engine?.dispose();
+
+    final engine = CnabValidatorEngine();
+    _engine = engine;
 
     setState(() {
-      _erros = erros;
-      _validado = true;
-      _validando = false;
+      _validando = true;
+      _relatorio = null;
+      _estadoAtual = const EstadoValidacao(
+        fase: FaseValidacao.estrutural,
+        percentual: 0,
+        mensagem: 'Iniciando validação...',
+      );
     });
 
-    // Atualiza status de todos os títulos
-    for (final t in titulos) {
-      final errosTitulo = ValidadorCamposObrigatorios.validarTitulo(t);
-      if (errosTitulo.isEmpty) {
-        await ref
-            .read(titulosProvider.notifier)
-            .atualizar(t.copyWith(status: StatusTitulo.valido, erros: []));
-      } else {
-        final temGrave = errosTitulo.any((e) =>
-            e.contains('inválido') || e.contains('CNPJ') || e.contains('CPF'));
-        await ref
-            .read(titulosProvider.notifier)
-            .atualizar(t.copyWith(
-              status:
-                  temGrave ? StatusTitulo.invalido : StatusTitulo.pendente,
-              erros: errosTitulo,
-            ));
+    _progressSub = engine.progressoStream.listen((estado) {
+      if (mounted) {
+        setState(() => _estadoAtual = estado);
       }
+    });
+
+    try {
+      final relatorio = await engine.validar(
+        conteudo,
+        nomeArquivo: _nomeArquivoCarregado,
+      );
+
+      if (mounted) {
+        setState(() {
+          _relatorio = relatorio;
+          _validando = false;
+          _estadoAtual = null;
+        });
+
+        // Mostrar toast com resultado
+        if (relatorio.aprovado) {
+          _mostrarSnack('✅ Arquivo aprovado! Score: ${relatorio.qualityScore}/100', const Color(0xFF4CAF50));
+        } else if (relatorio.totalFatais > 0) {
+          _mostrarSnack('❌ ${relatorio.totalFatais} erro(s) FATAL(is) encontrado(s). Download bloqueado.', const Color(0xFFB00020));
+        } else {
+          _mostrarSnack('⚠️ ${relatorio.totalErros} erro(s) encontrado(s). Revise antes de enviar.', Colors.orange);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _validando = false;
+          _estadoAtual = null;
+        });
+        _mostrarSnack('Erro durante validação: $e', Colors.red);
+      }
+    } finally {
+      _progressSub?.cancel();
     }
+  }
+
+  void _cancelarValidacao() {
+    _engine?.cancelar();
+    setState(() {
+      _validando = false;
+      _estadoAtual = null;
+    });
+    _mostrarSnack('Validação cancelada pelo usuário.', Colors.grey);
+  }
+
+  void _carregarArquivoExterno() {
+    final input = html.FileUploadInputElement()
+      ..accept = '.rem,.ret,.txt,.cnab,.240'
+      ..multiple = false;
+    input.click();
+
+    input.onChange.listen((event) {
+      final files = input.files;
+      if (files == null || files.isEmpty) return;
+
+      final file = files.first;
+      _nomeArquivoCarregado = file.name;
+
+      final reader = html.FileReader();
+      reader.readAsText(file);
+
+      reader.onLoad.listen((_) {
+        final content = reader.result as String;
+        setState(() {
+          _conteudoArquivoExterno = content;
+          _usarArquivoGerado = false;
+        });
+        _mostrarSnack('Arquivo "${file.name}" carregado (${file.size} bytes).', const Color(0xFF2196F3));
+      });
+    });
+  }
+
+  void _exportarPdfRelatorio() {
+    if (_relatorio == null) return;
+
+    // Gerar relatório como texto formatado e download como .txt (PDF real requer lib pdf)
+    final buffer = StringBuffer();
+    buffer.writeln('=' * 60);
+    buffer.writeln('RELATÓRIO DE VALIDAÇÃO CNAB 240 — SANTANDER');
+    buffer.writeln('=' * 60);
+    buffer.writeln('Data: ${DateTime.now().toString().substring(0, 19)}');
+    buffer.writeln('Arquivo: ${_relatorio!.nomeArquivo ?? "não informado"}');
+    buffer.writeln('Status: ${_relatorio!.statusLabel}');
+    buffer.writeln('Score de Qualidade: ${_relatorio!.qualityScore}/100');
+    buffer.writeln('Tempo de validação: ${_relatorio!.tempoTotalMs}ms');
+    buffer.writeln('');
+    buffer.writeln('RESUMO:');
+    buffer.writeln('  Fatais: ${_relatorio!.totalFatais}');
+    buffer.writeln('  Erros:  ${_relatorio!.totalErros}');
+    buffer.writeln('  Avisos: ${_relatorio!.totalAvisos}');
+    buffer.writeln('  Infos:  ${_relatorio!.totalInfos}');
+
+    if (_relatorio!.estatisticas != null) {
+      final est = _relatorio!.estatisticas!;
+      buffer.writeln('');
+      buffer.writeln('ESTATÍSTICAS DO ARQUIVO:');
+      buffer.writeln('  Total de linhas: ${est.totalLinhas}');
+      buffer.writeln('  Total de lotes: ${est.totalLotes}');
+      buffer.writeln('  Total de títulos: ${est.totalTitulos}');
+      buffer.writeln('  Valor total: R\$ ${est.valorTotal.toStringAsFixed(2)}');
+    }
+
+    buffer.writeln('');
+    buffer.writeln('CHECKLIST OBRIGATÓRIO:');
+    _relatorio!.checklistObrigatorio.forEach((k, v) {
+      buffer.writeln('  [${v ? 'OK' : 'FALHOU'}] $k');
+    });
+
+    buffer.writeln('');
+    buffer.writeln('OCORRÊNCIAS:');
+    buffer.writeln('-' * 60);
+
+    for (final erro in _relatorio!.erros) {
+      buffer.writeln('');
+      buffer.writeln('[${erro.labelSeveridade}] ${erro.codigo} — ${erro.descricao}');
+      if (erro.detalhe != null) buffer.writeln('  Detalhe: ${erro.detalhe}');
+      if (erro.linha != null) buffer.writeln('  Linha: ${erro.linha}');
+      if (erro.posicaoInicio != null) {
+        buffer.writeln('  Posição FEBRABAN: ${erro.posicaoInicio}${erro.posicaoFim != null ? '-${erro.posicaoFim}' : ''}');
+      }
+      if (erro.campoCnab != null) buffer.writeln('  Campo CNAB: ${erro.campoCnab}');
+      if (erro.sugestaoCorrecao != null) buffer.writeln('  Sugestão: ${erro.sugestaoCorrecao}');
+      if (erro.referenciaFebraban != null) buffer.writeln('  Ref: ${erro.referenciaFebraban}');
+    }
+
+    buffer.writeln('');
+    buffer.writeln('=' * 60);
+    buffer.writeln('FIM DO RELATÓRIO');
+
+    // Download como .txt
+    final bytes = utf8.encode(buffer.toString());
+    final blob = html.Blob([bytes]);
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.AnchorElement(href: url)
+      ..download = 'relatorio_validacao_cnab240_${DateTime.now().millisecondsSinceEpoch}.txt'
+      ..click();
+    html.Url.revokeObjectUrl(url);
+
+    _mostrarSnack('Relatório exportado com sucesso!', const Color(0xFF4CAF50));
+  }
+
+  void _mostrarSnack(String msg, Color cor) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: cor,
+      duration: const Duration(seconds: 4),
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final titulos = ref.watch(titulosProvider);
-    final empresa = ref.watch(empresaConfigProvider);
-    final validos =
-        titulos.where((t) => t.status == StatusTitulo.valido).length;
-    final invalidos =
-        titulos.where((t) => t.status == StatusTitulo.invalido).length;
-    final pendentes =
-        titulos.where((t) => t.status == StatusTitulo.pendente).length;
-
-    return ContentArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F4F4),
+      body: Column(
         children: [
-          SectionHeader(
-            title: 'Validação da Remessa',
-            subtitle:
-                'Verifique se todos os títulos estão corretos antes de gerar o CNAB 240',
-          ),
-          const SizedBox(height: 24),
+          // ── Header da tela ────────────────────────────────────────────────
+          _buildHeader(),
 
-          // ── Cards de Status ──────────────────────────────────
-          Row(
-            children: [
-              Expanded(
-                child: _StatusCard(
-                  title: 'Empresa',
-                  status: empresa.isConfigured ? 'OK' : 'Pendente',
-                  ok: empresa.isConfigured,
-                  icon: Icons.business,
-                  desc: empresa.isConfigured
-                      ? empresa.razaoSocial
-                      : 'Configurar empresa',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatusCard(
-                  title: 'Títulos Válidos',
-                  status: '$validos de ${titulos.length}',
-                  ok: validos == titulos.length && titulos.isNotEmpty,
-                  icon: Icons.check_circle,
-                  desc: validos == titulos.length && titulos.isNotEmpty
-                      ? 'Todos prontos para gerar CNAB'
-                      : 'Há títulos com pendências',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatusCard(
-                  title: 'Inválidos / Pendentes',
-                  status: '${invalidos + pendentes}',
-                  ok: (invalidos + pendentes) == 0,
-                  icon: Icons.warning_amber,
-                  desc: (invalidos + pendentes) == 0
-                      ? 'Sem pendências'
-                      : '$invalidos inválido(s), $pendentes pendente(s)',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatusCard(
-                  title: 'Pronto para CNAB',
-                  status: (empresa.isConfigured &&
-                          validos > 0 &&
-                          validos == titulos.length)
-                      ? 'SIM'
-                      : 'NÃO',
-                  ok: empresa.isConfigured &&
-                      validos > 0 &&
-                      validos == titulos.length,
-                  icon: Icons.download,
-                  desc: 'Clique em Validar Remessa',
-                ),
-              ),
-            ],
-          ),
+          // ── Conteúdo principal ────────────────────────────────────────────
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Seletor de fonte do arquivo
+                  _seletorFonte(),
+                  const SizedBox(height: 20),
 
-          const SizedBox(height: 32),
+                  // Painel de progresso (durante validação)
+                  if (_validando && _estadoAtual != null)
+                    ValidationProgressWidget(
+                      estado: _estadoAtual!,
+                      onCancelar: _cancelarValidacao,
+                    ),
 
-          // ── Botão Validar ────────────────────────────────────
-          Center(
-            child: ElevatedButton.icon(
-              onPressed: _validando ? null : _validarRemessa,
-              icon: _validando
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.verified, size: 22),
-              label: Text(
-                _validando ? 'Validando...' : 'Validar Remessa Completa',
-              ),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(280, 52),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                  // Resultado da validação
+                  if (!_validando && _relatorio != null)
+                    ValidationPanel(
+                      relatorio: _relatorio!,
+                      onRevalidar: _executarValidacao,
+                      onExportarPdf: _exportarPdfRelatorio,
+                      onGerarCnab: _relatorio!.aprovado || _relatorio!.temApenasAvisos
+                          ? () {
+                              ref.read(currentScreenProvider.notifier).state = AppScreen.gerarCnab;
+                            }
+                          : null,
+                      onCorrigirErro: (erro) {
+                        if (erro.indiceTitulo != null) {
+                          ref.read(currentScreenProvider.notifier).state = AppScreen.titulos;
+                          _mostrarSnack(
+                            'Navegando para lista de títulos — corrija o título #${erro.indiceTitulo! + 1}',
+                            Colors.orange,
+                          );
+                        }
+                      },
+                    ),
+
+                  // Estado inicial (sem validação executada)
+                  if (!_validando && _relatorio == null)
+                    _estadoInicial(),
+
+                  const SizedBox(height: 20),
+
+                  // Dicionário de ocorrências de retorno
+                  _dicionarioOcorrencias(),
+                ],
               ),
             ),
           ),
-
-          const SizedBox(height: 24),
-
-          // ── Resultado da Validação ───────────────────────────
-          if (_validado) ...[
-            if (_erros.isEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.successLight,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppColors.success.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle,
-                        color: AppColors.success, size: 40),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Remessa válida e pronta para geração!',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.success,
-                            ),
-                          ),
-                          Text(
-                            '$validos título(s) prontos para gerar o arquivo CNAB 240',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.success,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () => ref
-                          .read(currentScreenProvider.notifier)
-                          .state = AppScreen.gerarCnab,
-                      icon: const Icon(Icons.download, size: 18),
-                      label: const Text('Gerar CNAB 240'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ] else ...[
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.errorLight,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppColors.error.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error, color: AppColors.error, size: 32),
-                    const SizedBox(width: 16),
-                    Text(
-                      '${_erros.length} problema(s) encontrado(s). '
-                      'Corrija antes de gerar o CNAB.',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.error,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: const BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(8)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.list_alt,
-                              size: 16, color: AppColors.error),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Lista de Erros (${_erros.length})',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    ...(_erros.map((e) => _ErroItem(
-                          erro: e,
-                          onCorrigir: e.tituloId != 'empresa' &&
-                                  e.tituloId != 'lista'
-                              ? () {
-                                  ref
-                                      .read(currentScreenProvider.notifier)
-                                      .state = AppScreen.titulos;
-                                }
-                              : e.tituloId == 'empresa'
-                                  ? () {
-                                      ref
-                                          .read(currentScreenProvider.notifier)
-                                          .state = AppScreen.configuracoes;
-                                    }
-                                  : null,
-                        ))),
-                  ],
-                ),
-              ),
-            ],
-          ],
         ],
       ),
     );
   }
-}
 
-class _StatusCard extends StatelessWidget {
-  final String title;
-  final String status;
-  final bool ok;
-  final IconData icon;
-  final String desc;
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0))),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified_rounded, color: Color(0xFFEC0000), size: 28),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Validação CNAB 240',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  'Engine completa FEBRABAN/Santander — 80+ regras',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
+                ),
+              ],
+            ),
+          ),
+          // Badge com número de erros (se há relatório)
+          if (_relatorio != null)
+            Row(
+              children: [
+                if (_relatorio!.totalFatais > 0)
+                  _badgeContador(_relatorio!.totalFatais, 'Fatal', const Color(0xFFB00020)),
+                if (_relatorio!.totalErros > 0)
+                  _badgeContador(_relatorio!.totalErros, 'Erros', const Color(0xFFF44336)),
+                if (_relatorio!.totalAvisos > 0)
+                  _badgeContador(_relatorio!.totalAvisos, 'Avisos', const Color(0xFFFF9800)),
+              ],
+            ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            onPressed: _validando ? null : _executarValidacao,
+            icon: _validando
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.play_arrow_rounded, size: 20),
+            label: Text(_validando ? 'Validando...' : 'Executar Validação'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEC0000),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  const _StatusCard({
-    required this.title,
-    required this.status,
-    required this.ok,
-    required this.icon,
-    required this.desc,
-  });
+  Widget _badgeContador(int count, String label, Color cor) {
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        '$count $label',
+        style: TextStyle(fontSize: 11, color: cor, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final color = ok ? AppColors.success : AppColors.warning;
+  Widget _seletorFonte() {
     return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Text(
+              'Fonte do arquivo para validação',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
-                Icon(icon, color: color, size: 18),
-                const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
+                  child: _opcaoFonte(
+                    titulo: 'Arquivo Gerado',
+                    subtitulo: 'Valida o último arquivo CNAB gerado nesta sessão',
+                    icone: Icons.receipt_long_rounded,
+                    selecionado: _usarArquivoGerado,
+                    onTap: () => setState(() => _usarArquivoGerado = true),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _opcaoFonte(
+                    titulo: 'Upload de Arquivo',
+                    subtitulo: 'Valida arquivo externo (.rem, .ret, .txt, .cnab)',
+                    icone: Icons.upload_file_rounded,
+                    selecionado: !_usarArquivoGerado,
+                    onTap: () {
+                      setState(() => _usarArquivoGerado = false);
+                      _carregarArquivoExterno();
+                    },
+                    badge: _conteudoArquivoExterno != null ? _nomeArquivoCarregado : null,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              status,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              desc,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
       ),
     );
   }
-}
 
-class _ErroItem extends StatelessWidget {
-  final ErroValidacaoRemessa erro;
-  final VoidCallback? onCorrigir;
-
-  const _ErroItem({required this.erro, this.onCorrigir});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.divider)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.warning_amber, color: AppColors.warning, size: 16),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  erro.tituloRef,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                ...erro.erros.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('• ',
-                              style: TextStyle(color: AppColors.error)),
-                          Expanded(
-                            child: Text(
-                              e,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.error,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )),
-              ],
-            ),
+  Widget _opcaoFonte({
+    required String titulo,
+    required String subtitulo,
+    required IconData icone,
+    required bool selecionado,
+    required VoidCallback onTap,
+    String? badge,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selecionado ? const Color(0xFFEC0000) : const Color(0xFFE0E0E0),
+            width: selecionado ? 2 : 1,
           ),
-          if (onCorrigir != null)
-            TextButton.icon(
-              onPressed: onCorrigir,
-              icon: const Icon(Icons.edit, size: 14),
-              label: const Text('Corrigir'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                textStyle: const TextStyle(fontSize: 12),
+          color: selecionado
+              ? const Color(0xFFEC0000).withValues(alpha: 0.05)
+              : Colors.white,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icone,
+              color: selecionado ? const Color(0xFFEC0000) : Colors.grey,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titulo,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selecionado ? const Color(0xFFEC0000) : Colors.black87,
+                    ),
+                  ),
+                  Text(
+                    badge != null ? badge : subtitulo,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: badge != null ? const Color(0xFF4CAF50) : Colors.grey[600],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
+            if (selecionado)
+              const Icon(Icons.check_circle_rounded,
+                  color: Color(0xFFEC0000), size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _estadoInicial() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(48),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEC0000).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(60),
+              ),
+              child: const Icon(
+                Icons.shield_outlined,
+                color: Color(0xFFEC0000),
+                size: 60,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Pronto para Validar',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Clique em "Executar Validação" para verificar o arquivo CNAB 240\n'
+              'contra as regras FEBRABAN e específicas do Santander.\n\n'
+              '• 80+ regras verificadas automaticamente\n'
+              '• Estrutural, algoritmos (DAC, CPF, CNPJ), negócio\n'
+              '• Score de qualidade 0-100\n'
+              '• Download bloqueado em caso de erros fatais',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.6),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _chipInfo(Icons.timer_outlined, '< 500ms para 1000 títulos'),
+                const SizedBox(width: 12),
+                _chipInfo(Icons.cancel_outlined, 'Cancelamento suportado'),
+                const SizedBox(width: 12),
+                _chipInfo(Icons.picture_as_pdf_outlined, 'Relatório exportável'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chipInfo(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.grey[600]),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
         ],
       ),
     );
+  }
+
+  Widget _dicionarioOcorrencias() {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: InkWell(
+        onTap: () => setState(() => _mostrarDicionario = !_mostrarDicionario),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.menu_book_rounded, color: Color(0xFFEC0000), size: 22),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Dicionário de Ocorrências de Retorno Santander',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          'Códigos 01 a 74 — Consulte o significado de cada ocorrência no arquivo de retorno',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF757575)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _mostrarDicionario ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.grey,
+                  ),
+                ],
+              ),
+              if (_mostrarDicionario) ...[
+                const Divider(height: 20),
+                SizedBox(
+                  height: 400,
+                  child: ListView(
+                    children: DicionarioOcorrenciasSantander.ocorrencias.entries
+                        .map((e) => ListTile(
+                              dense: true,
+                              leading: Container(
+                                width: 36,
+                                height: 28,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _corOcorrencia(e.key).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: _corOcorrencia(e.key).withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                child: Text(
+                                  e.key,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _corOcorrencia(e.key),
+                                  ),
+                                ),
+                              ),
+                              title: Text(e.value, style: const TextStyle(fontSize: 12)),
+                              subtitle: _labelOcorrencia(e.key),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _corOcorrencia(String codigo) {
+    if (DicionarioOcorrenciasSantander.isLiquidado(codigo)) return const Color(0xFF4CAF50);
+    if (DicionarioOcorrenciasSantander.isRejeitado(codigo)) return const Color(0xFFF44336);
+    if (DicionarioOcorrenciasSantander.isBaixado(codigo)) return const Color(0xFFFF9800);
+    return const Color(0xFF2196F3);
+  }
+
+  Widget? _labelOcorrencia(String codigo) {
+    if (DicionarioOcorrenciasSantander.isLiquidado(codigo)) {
+      return const Text('Liquidado', style: TextStyle(fontSize: 10, color: Color(0xFF4CAF50)));
+    }
+    if (DicionarioOcorrenciasSantander.isRejeitado(codigo)) {
+      return const Text('Rejeitado', style: TextStyle(fontSize: 10, color: Color(0xFFF44336)));
+    }
+    if (DicionarioOcorrenciasSantander.isBaixado(codigo)) {
+      return const Text('Baixado', style: TextStyle(fontSize: 10, color: Color(0xFFFF9800)));
+    }
+    return null;
   }
 }

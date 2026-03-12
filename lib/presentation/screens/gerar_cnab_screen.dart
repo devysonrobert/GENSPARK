@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
 import '../widgets/common_widgets.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/validation/cnab_validator_engine.dart';
+import '../../core/validation/models/validation_report.dart';
 import '../../domain/models/titulo.dart';
 import '../../domain/builders/cnab_santander240_builder.dart';
 import '../../data/storage/local_storage.dart';
@@ -23,6 +25,8 @@ class GerarCnabScreen extends ConsumerStatefulWidget {
 
 class _GerarCnabScreenState extends ConsumerState<GerarCnabScreen> {
   bool _gerando = false;
+  bool _validandoPos = false;
+  RelatorioValidacao? _ultimoRelatorio;
   late TextEditingController _numArquivoCtrl;
 
   @override
@@ -106,19 +110,256 @@ class _GerarCnabScreenState extends ConsumerState<GerarCnabScreen> {
       // Notifica atualização de histórico
       ref.read(historicoRefreshProvider.notifier).state++;
 
-      // Download automático
-      _baixarArquivo(conteudo, nomeArquivo);
+      // ── Validação pós-geração ──────────────────────────────────────────────
+      if (mounted) setState(() { _gerando = false; _validandoPos = true; });
 
-      if (mounted) {
-        showSuccessToast(context, 'Arquivo $nomeArquivo gerado e baixado!');
+      RelatorioValidacao relatorio;
+      try {
+        relatorio = await validarRapido(conteudo, nomeArquivo);
+        _ultimoRelatorio = relatorio;
+      } catch (e) {
+        if (mounted) setState(() => _validandoPos = false);
+        // Em caso de erro na validação, permite download mesmo assim
+        _baixarArquivo(conteudo, nomeArquivo);
+        showSuccessToast(context, 'Arquivo $nomeArquivo gerado (validação indisponível)!');
+        return;
+      }
+
+      if (mounted) setState(() => _validandoPos = false);
+
+      // ── Decisão baseada no resultado da validação ─────────────────────────
+      if (relatorio.totalFatais > 0) {
+        // BLOQUEIO: erros fatais impedem download
+        if (mounted) {
+          _mostrarDialogoValidacao(relatorio, conteudo, nomeArquivo, bloqueado: true);
+        }
+      } else if (relatorio.totalErros > 0) {
+        // AVISOS CRÍTICOS: erros não-fatais, permite download com alerta
+        if (mounted) {
+          _mostrarDialogoValidacao(relatorio, conteudo, nomeArquivo, bloqueado: false);
+        }
+      } else if (relatorio.totalAvisos > 0) {
+        // AVISOS: permite download com snack de alerta
+        _baixarArquivo(conteudo, nomeArquivo);
+        if (mounted) {
+          showWarningToast(
+            context,
+            '⚠️ Arquivo gerado com ${relatorio.totalAvisos} aviso(s). Score: ${relatorio.qualityScore}/100',
+          );
+        }
+      } else {
+        // APROVADO: download direto
+        _baixarArquivo(conteudo, nomeArquivo);
+        if (mounted) {
+          showSuccessToast(context,
+              '✅ Arquivo $nomeArquivo gerado! Score: ${relatorio.qualityScore}/100');
+        }
       }
     } catch (e) {
       if (mounted) {
         showErrorToast(context, 'Erro ao gerar CNAB: $e');
       }
     } finally {
-      if (mounted) setState(() => _gerando = false);
+      if (mounted) setState(() { _gerando = false; _validandoPos = false; });
     }
+  }
+
+  /// Mostra diálogo com resultado da validação pós-geração
+  void _mostrarDialogoValidacao(
+    RelatorioValidacao relatorio,
+    String conteudo,
+    String nomeArquivo, {
+    required bool bloqueado,
+  }) {
+    final cor = bloqueado ? const Color(0xFFB00020) : const Color(0xFFF44336);
+    final titulo = bloqueado
+        ? '❌ Download Bloqueado — Erros Fatais'
+        : '⚠️ Arquivo Gerado com Erros';
+    final icone = bloqueado ? Icons.block_rounded : Icons.warning_amber_rounded;
+
+    showDialog(
+      context: context,
+      barrierDismissible: !bloqueado,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        titlePadding: EdgeInsets.zero,
+        title: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cor.withValues(alpha: 0.1),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border(bottom: BorderSide(color: cor.withValues(alpha: 0.3))),
+          ),
+          child: Row(
+            children: [
+              Icon(icone, color: cor, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  titulo,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cor),
+                ),
+              ),
+            ],
+          ),
+        ),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Score
+              Row(
+                children: [
+                  Text(
+                    'Score de Qualidade: ',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                  Text(
+                    '${relatorio.qualityScore}/100',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: relatorio.qualityScore >= 50 ? const Color(0xFFFF9800) : cor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Contadores
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if (relatorio.totalFatais > 0)
+                    _badgeResumo('${relatorio.totalFatais} FATAL', const Color(0xFFB00020)),
+                  if (relatorio.totalErros > 0)
+                    _badgeResumo('${relatorio.totalErros} ERRO(S)', const Color(0xFFF44336)),
+                  if (relatorio.totalAvisos > 0)
+                    _badgeResumo('${relatorio.totalAvisos} AVISO(S)', const Color(0xFFFF9800)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Divider(),
+              // Lista dos primeiros erros
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: (relatorio.errosFatais + relatorio.errosGraves).take(5).length,
+                  itemBuilder: (_, i) {
+                    final erros = [...relatorio.errosFatais, ...relatorio.errosGraves];
+                    if (i >= erros.length) return const SizedBox.shrink();
+                    final erro = erros[i];
+                    final c = erro.severidade.name == 'fatal'
+                        ? const Color(0xFFB00020)
+                        : const Color(0xFFF44336);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: c,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              erro.codigo,
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              erro.descricao,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (bloqueado) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFB00020).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFB00020).withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: Color(0xFFB00020), size: 16),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'O download está bloqueado até que os erros fatais sejam corrigidos.',
+                          style: TextStyle(fontSize: 12, color: Color(0xFFB00020)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ref.read(currentScreenProvider.notifier).state = AppScreen.validacao;
+            },
+            icon: const Icon(Icons.verified_rounded, size: 16),
+            label: const Text('Ver Relatório Completo'),
+          ),
+          if (!bloqueado)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _baixarArquivo(conteudo, nomeArquivo);
+              },
+              icon: const Icon(Icons.download_rounded, size: 16),
+              label: const Text('Baixar Mesmo Assim'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF9800),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          if (bloqueado)
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(ctx).pop(),
+              icon: const Icon(Icons.edit_rounded, size: 16),
+              label: const Text('Corrigir e Regenerar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEC0000),
+                foregroundColor: Colors.white,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _badgeResumo(String texto, Color cor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: cor.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: cor),
+      ),
+    );
   }
 
   void _baixarArquivo(String conteudo, String nomeArquivo) {
@@ -329,12 +570,12 @@ class _GerarCnabScreenState extends ConsumerState<GerarCnabScreen> {
                               width: double.infinity,
                               height: 56,
                               child: ElevatedButton.icon(
-                                onPressed: _gerando ||
+                                onPressed: _gerando || _validandoPos ||
                                         validos.isEmpty ||
                                         !empresa.isConfigured
                                     ? null
                                     : _gerarCnab,
-                                icon: _gerando
+                                icon: (_gerando || _validandoPos)
                                     ? const SizedBox(
                                         width: 20,
                                         height: 20,
@@ -346,7 +587,9 @@ class _GerarCnabScreenState extends ConsumerState<GerarCnabScreen> {
                                 label: Text(
                                   _gerando
                                       ? 'Gerando...'
-                                      : 'GERAR E BAIXAR CNAB 240',
+                                      : _validandoPos
+                                          ? 'Validando arquivo...'
+                                          : 'GERAR E BAIXAR CNAB 240',
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
@@ -395,6 +638,56 @@ class _GerarCnabScreenState extends ConsumerState<GerarCnabScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const TitledDivider(title: 'ÚLTIMO ARQUIVO GERADO'),
+                              // Badge de validação
+                              if (_ultimoRelatorio != null) ...[
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: Color(int.parse(
+                                            _ultimoRelatorio!.corStatus
+                                                .replaceFirst('#', '0xFF')))
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: Color(int.parse(
+                                              _ultimoRelatorio!.corStatus
+                                                  .replaceFirst('#', '0xFF')))
+                                          .withValues(alpha: 0.4),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _ultimoRelatorio!.aprovado
+                                            ? Icons.verified_rounded
+                                            : _ultimoRelatorio!.totalFatais > 0
+                                                ? Icons.block_rounded
+                                                : Icons.warning_rounded,
+                                        size: 16,
+                                        color: Color(int.parse(
+                                            _ultimoRelatorio!.corStatus
+                                                .replaceFirst('#', '0xFF'))),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          '${_ultimoRelatorio!.statusLabel} — Score ${_ultimoRelatorio!.qualityScore}/100',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(int.parse(
+                                                _ultimoRelatorio!.corStatus
+                                                    .replaceFirst('#', '0xFF'))),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               _InfoRow(
                                 label: 'Nome',
                                 value: cnabGerado.nomeArquivo ?? '—',
