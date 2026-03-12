@@ -1,0 +1,56 @@
+name: cnab_master
+description: Sistema profissional para geração de arquivos CNAB 240 Santander - Cobrança de Boletos
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # XML Parsing
+  xml: ^6.5.0
+
+  # Excel
+  excel: ^4.0.2
+
+  # File operations web
+  universal_html: ^2.2.4
+
+  # PDF
+  pdf: ^3.10.8
+  printing: ^5.12.0
+
+  # Input masks
+  mask_text_input_formatter: ^2.9.0
+
+  # Local Storage
+  shared_preferences: ^2.5.3
+
+  # Utils
+  intl: ^0.20.0
+  uuid: ^4.3.3
+  collection: ^1.18.0
+  path: ^1.9.0
+
+  cupertino_icons: ^1.0.2
+  flutter_localizations:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  riverpod_generator: ^2.3.9
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
