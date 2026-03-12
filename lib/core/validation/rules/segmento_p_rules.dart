@@ -1,59 +1,62 @@
 // core/validation/rules/segmento_p_rules.dart
 // Regras de validação do Segmento P CNAB 240
-// FEBRABAN CNAB 240 v10.7 — Segmento P (dados do boleto/título)
-// Posições definidas pela especificação Santander Cobrança
+// Layout H7815 V8.5 Fev/2026 — Santander Cobrança CNAB 240 Posições
 
 import '../models/validation_error.dart';
 import '../models/validation_result.dart';
 
 class RegraSegmentoP {
-  // ── Posições Santander Segmento P ────────────────────────────────────────
-  // Pos  1- 3: Código Banco (033)
-  // Pos  4- 7: Lote de Serviço
+  // ── Mapa de Posições H7815 V8.5 — Segmento P ──────────────────────────────
+  // Pos  1-  3: Código Banco (033)
+  // Pos  4-  7: Lote de Serviço (0001)
   // Pos     8: Tipo Registro (3)
-  // Pos  9-13: Nr Sequencial do Registro no Lote
+  // Pos  9- 13: Nr Sequencial do Registro no Lote
   // Pos    14: Código Segmento (P)
-  // Pos    15: Tipo Movimento (0=Inclusão, 2=Alteração, 5=Cancelamento)
-  // Pos 16-17: Código Instrução p/ Movimento
-  // Pos 18-21: Agência (4 dígitos)
+  // Pos    15: Reservado (uso Banco — branco)
+  // Pos 16- 17: Código de Movimento Remessa (2 chars: 01=Entrada)
+  // Pos 18- 21: Agência (4 dígitos)
   // Pos    22: Dígito Agência
-  // Pos 23-30: Conta Corrente (8 dígitos)
-  // Pos    31: Dígito Conta
-  // Pos    32: Dígito AG/Conta
-  // Pos 33-52: Identificação do Título no Banco (Nosso Número formatado: carteira 3 + número 12 + DAC 1 = 16 chars no P)
-  // Pos 53-57: Carteira (3 dígitos p/ Santander, ex: 101, 102, 104, 201)
-  // Pos 58-62: Forma de Cadastro (3) / Tipo de Documento (P/Posição 57)
-  // Pos 63-72: Número do Documento (10 chars)
-  // Pos 73-80: Data de Vencimento (DDMMAAAA)
-  // Pos 81-95: Valor do Título (13 inteiros + 2 decimais = 15)
-  // Pos 96-100: Banco cobrador (zeros = sem instrução)
-  // Pos 101-104: Agência cobradora
-  // Pos   105: Espécie do Título
-  // Pos   106: Aceite (A/N)
-  // Pos 107-114: Data Emissão (DDMMAAAA)
-  // Pos   115: Código de Juros (0=Isento, 1=Valor/dia, 2=Taxa mensal)
-  // Pos 116-123: Data de Juros (DDMMAAAA)
-  // Pos 124-138: Valor/Taxa de Juros (15 dígitos, 2 decimais)
-  // Pos   139: Código Desconto 1 (0=Sem, 1=Valor, 2=Percentual, 3=Antecipado)
-  // Pos 140-147: Data Desconto 1 (DDMMAAAA)
-  // Pos 148-162: Valor/Percentual Desconto 1 (15 dígitos, 2 decimais)
-  // Pos 163-177: Valor IOF (15 dígitos, 2 decimais)
-  // Pos 178-192: Valor Abatimento (15 dígitos, 2 decimais)
-  // Pos 193-212: Identificação do Título na Empresa (20 chars)
-  // Pos   213: Código para Protesto (1-9)
-  // Pos 214-215: Número de Dias p/ Protesto
-  // Pos   216: Código p/ Baixa/Devolução
-  // Pos 217-219: Número de Dias p/ Baixa
-  // Pos 220-222: Código da Moeda (009 = Real)
-  // Pos 223-232: Nr do Contrato da Operação de Crédito (brancos)
-  // Pos   233: Uso Livre (branco)
+  // Pos 23- 31: Conta Corrente (9 dígitos) — H7815
+  // Pos    32: Dígito Verificador da Conta
+  // Pos 33- 41: Conta cobrança Destinatária FIDC (9 zeros)
+  // Pos    42: Dígito conta FIDC (zero)
+  // Pos 43- 44: Reservado (2 brancos)
+  // Pos 45- 57: Nosso Número — 13 posições numéricas (H7815 Nota 15)
+  // Pos    58: Tipo de Cobrança/Carteira (1=Simples, 3=Caucionada, 4=Descontada, 5=Simples Rápida)
+  // Pos    59: Forma de Cadastramento (1=Com Registro)
+  // Pos    60: Tipo de Documento (2=Escritural)
+  // Pos 61- 62: Reservado (2 brancos)
+  // Pos 63- 77: Número do Documento/Seu Número (15 alfa)
+  // Pos 78- 85: Data de Vencimento (DDMMAAAA)
+  // Pos 86-100: Valor Nominal (15 num, 2 decimais)
+  // Pos 101-104: Agência Encarregada Cobrança FIDC (4 zeros)
+  // Pos   105: Dígito Ag Cobradora FIDC (zero)
+  // Pos   106: Reservado (branco)
+  // Pos 107-108: Espécie do Boleto (2 num: 02=DM, 04=DS, 12=NP, etc.)
+  // Pos   109: Aceite (A/N)
+  // Pos 110-117: Data Emissão (DDMMAAAA)
+  // Pos   118: Código Juros (1=Valor/dia, 2=Taxa%, 3=Isento)
+  // Pos 119-126: Data Juros (DDMMAAAA)
+  // Pos 127-141: Valor/Taxa Juros (15 num)
+  // Pos   142: Código Desconto 1 (0=Sem, 1=Valor, 2=%)
+  // Pos 143-150: Data Desconto 1 (DDMMAAAA)
+  // Pos 151-165: Valor/Percentual Desconto 1 (15 num)
+  // Pos 166-180: IOF (15 zeros)
+  // Pos 181-195: Abatimento (15 zeros)
+  // Pos 196-220: Identificação na Empresa/Seu Número (25 alfa)
+  // Pos   221: Código Protesto (3=Não Protestar)
+  // Pos 222-223: Dias Protesto (2 num)
+  // Pos   224: Código Baixa (1=Baixar)
+  // Pos   225: Reservado (zero)
+  // Pos 226-227: Dias Baixa (2 num)
+  // Pos 228-229: Código Moeda (2 num: 09=Real — H7815 usa 2 chars)
+  // Pos 230-240: Reservado (11 brancos)
 
-  static const _codigosMovimento = {'0', '1', '2', '3', '4', '5', '7', '9'};
+  static const _codigosMovimento = {'01', '02', '04', '05', '06', '07', '08', '09', '10', '11', '12', '15', '16', '17'};
+  
+  // H7815 Nota 20: Espécies válidas
   static const _codigosEspecie = {
-    '01', '02', '03', '04', '05', '06', '07', '08',
-    '09', '10', '11', '12', '13', '14', '15', '16',
-    '17', '18', '19', '20', '21', '22', '23', '24',
-    '30', '31', '32',
+    '02', '04', '07', '12', '13', '17', '20', '30', '31', '32', '33', '97', '98',
   };
 
   /// SP001 — Código do banco deve ser 033
@@ -134,34 +137,36 @@ class RegraSegmentoP {
     return ResultadoRegra.sucesso('SP003', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP004 — Código de movimento deve ser válido
+  /// SP004 — Código de movimento: posição 16-17 (2 chars), válidos: 01..17
   static ResultadoRegra sP004CodigoMovimento(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 15) return ResultadoRegra.sucesso('SP004', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 17) return ResultadoRegra.sucesso('SP004', tempoMs: sw.elapsedMilliseconds);
 
-    final mov = seg.substring(14, 15);
+    // H7815: posição 15 é reservada (branco), posição 16-17 = código movimento
+    final mov = seg.substring(15, 17);
     if (!_codigosMovimento.contains(mov)) {
       return ResultadoRegra.falha('SP004', [
         ErroValidacao(
           codigo: 'SP004',
-          descricao: 'Código de movimento inválido no Segmento P',
-          detalhe: 'Encontrado: "$mov". Válidos: ${_codigosMovimento.join(", ")}',
+          descricao: 'Código de movimento inválido no Segmento P (posição 16-17)',
+          detalhe: 'Encontrado: "$mov". H7815 Nota 14: 01=Entrada, 02=Baixa, 04=Abatimento...',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 15,
-          posicaoFim: 15,
-          campoCnab: 'Tipo de Movimento',
+          posicaoInicio: 16,
+          posicaoFim: 17,
+          campoCnab: 'Código de Movimento Remessa',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao: 'Use 0 para Inclusão, 2 para Alteração, 5 para Cancelamento',
+          sugestaoCorrecao: 'Use 01 para Entrada de Boleto (Nota 14 H7815 V8.5)',
+          referenciaFebraban: 'H7815 V8.5 Nota 14 — Código de Movimento para Remessa',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP004', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP005 — Agência: 4 dígitos numéricos
+  /// SP005 — Agência: posição 18-21 (4 dígitos)
   static ResultadoRegra sP005Agencia(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
     if (seg.length < 21) return ResultadoRegra.sucesso('SP005', tempoMs: sw.elapsedMilliseconds);
@@ -171,14 +176,14 @@ class RegraSegmentoP {
       return ResultadoRegra.falha('SP005', [
         ErroValidacao(
           codigo: 'SP005',
-          descricao: 'Agência inválida no Segmento P',
+          descricao: 'Agência inválida no Segmento P (posição 18-21)',
           detalhe: 'Encontrado: "$ag". Esperado: 4 dígitos numéricos',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
           posicaoInicio: 18,
           posicaoFim: 21,
-          campoCnab: 'Agência Mantenedora',
+          campoCnab: 'Agência do Destinatária',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
         ),
@@ -187,131 +192,126 @@ class RegraSegmentoP {
     return ResultadoRegra.sucesso('SP005', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP006 — Conta: 8 dígitos numéricos
+  /// SP006 — Conta Corrente: posição 23-31 (9 dígitos) — H7815 V8.5
   static ResultadoRegra sP006Conta(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 30) return ResultadoRegra.sucesso('SP006', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 31) return ResultadoRegra.sucesso('SP006', tempoMs: sw.elapsedMilliseconds);
 
-    final conta = seg.substring(22, 30);
-    if (!RegExp(r'^\d{8}$').hasMatch(conta)) {
+    final conta = seg.substring(22, 31);
+    if (!RegExp(r'^\d{9}$').hasMatch(conta)) {
       return ResultadoRegra.falha('SP006', [
         ErroValidacao(
           codigo: 'SP006',
-          descricao: 'Número de conta inválido no Segmento P',
-          detalhe: 'Encontrado: "$conta". Esperado: 8 dígitos numéricos',
+          descricao: 'Número de conta inválido no Segmento P (posição 23-31)',
+          detalhe: 'Encontrado: "$conta". H7815: 9 dígitos numéricos',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
           posicaoInicio: 23,
-          posicaoFim: 30,
+          posicaoFim: 31,
           campoCnab: 'Número da Conta Corrente',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
+          referenciaFebraban: 'H7815 V8.5 — Posição 23-31: Conta 9 dígitos',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP006', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP007 — Nosso número não pode estar vazio ou zerado
+  /// SP007 — Nosso Número: posição 45-57 (13 dígitos) — H7815 Nota 15
   static ResultadoRegra sP007NossoNumero(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 52) return ResultadoRegra.sucesso('SP007', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 57) return ResultadoRegra.sucesso('SP007', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 33-52 = nosso número completo (carteira 3 + número 12 + DAC 1 = 16 no formato atual)
-    // No Santander o campo tem 20 caracteres: pos 33-52
-    final nossoNum = seg.substring(32, 52).trim();
-    if (nossoNum.isEmpty || RegExp(r'^0+$').hasMatch(nossoNum)) {
+    // H7815 Nota 15: posição 45-57 = 13 posições numéricas (Nosso Número)
+    final nossoNum = seg.substring(44, 57);
+    if (!RegExp(r'^\d{13}$').hasMatch(nossoNum) || RegExp(r'^0+$').hasMatch(nossoNum)) {
       return ResultadoRegra.falha('SP007', [
         ErroValidacao(
           codigo: 'SP007',
-          descricao: 'Nosso Número vazio ou zerado no Segmento P',
-          detalhe: 'Valor encontrado: "${seg.substring(32, 52)}"',
+          descricao: 'Nosso Número inválido ou zerado no Segmento P (posição 45-57)',
+          detalhe: 'Encontrado: "$nossoNum". H7815: 13 dígitos numéricos com DAC Módulo 11',
           severidade: SeveridadeValidacao.fatal,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 33,
-          posicaoFim: 52,
-          campoCnab: 'Identificação do Título no Banco (Nosso Número)',
+          posicaoInicio: 45,
+          posicaoFim: 57,
+          campoCnab: 'Identificação do Boleto no Banco (Nosso Número)',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao:
-              'Preencha o nosso número com código carteira (3) + número (12) + DAC (1)',
+          sugestaoCorrecao: 'H7815 Nota 15: Nosso Número = 12 dígitos + 1 DAC Módulo 11',
+          referenciaFebraban: 'H7815 V8.5 Nota 15 — Nosso Número: 13 posições',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP007', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP008 — Carteira deve ser válida (101, 102, 104, 201)
+  /// SP008 — Tipo de Cobrança (Carteira): posição 58 (1 char)
+  /// H7815 Nota 5: '1'=Simples, '3'=Caucionada, '4'=Descontada, '5'=Simples Rápida
   static ResultadoRegra sP008Carteira(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 56) return ResultadoRegra.sucesso('SP008', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 58) return ResultadoRegra.sucesso('SP008', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 53-55 ou parte do Nosso Número — depende do layout
-    // No Santander a carteira está nos primeiros 3 chars da posição 33 do nosso número
-    final cartStr = seg.substring(32, 35);
-    const carteirasValidas = {'101', '102', '104', '201'};
-    if (!carteirasValidas.contains(cartStr)) {
+    final tipoCobranca = seg.substring(57, 58);
+    const tiposValidos = {'1', '3', '4', '5', '6', '7', '8', '9', 'B'};
+    if (!tiposValidos.contains(tipoCobranca)) {
       return ResultadoRegra.falha('SP008', [
         ErroValidacao(
           codigo: 'SP008',
-          descricao: 'Código de carteira inválido no Segmento P',
-          detalhe: 'Encontrado: "$cartStr". Válidos: 101, 102, 104, 201',
+          descricao: 'Tipo de Cobrança (Carteira) inválido no Segmento P (posição 58)',
+          detalhe: 'Encontrado: "$tipoCobranca". H7815 Nota 5: 1=Simples, 3=Caucionada, 4=Descontada, 5=Simples Rápida',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 33,
-          posicaoFim: 35,
-          campoCnab: 'Carteira',
+          posicaoInicio: 58,
+          posicaoFim: 58,
+          campoCnab: 'Tipo de Cobrança (Carteira)',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao:
-              'Santander aceita carteiras 101 (Simples), 102 (Vinculada), 104 (Caucionada), 201 (Descontada)',
-          referenciaFebraban:
-              'Santander CNAB 240 — Carteiras: 101/102/104/201',
+          sugestaoCorrecao: 'Use 1=Simples (mais comum) conforme H7815 Nota 5',
+          referenciaFebraban: 'H7815 V8.5 Nota 5 — Tipo de Cobrança',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP008', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP009 — Número do documento não pode estar vazio
+  /// SP009 — Número do documento: posição 63-77 (15 alfa) — H7815 Nota 16
   static ResultadoRegra sP009NumeroDocumento(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 72) return ResultadoRegra.sucesso('SP009', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 77) return ResultadoRegra.sucesso('SP009', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 63-72 (índice 62-71)
-    final numDoc = seg.substring(62, 72).trim();
+    final numDoc = seg.substring(62, 77).trim();
     if (numDoc.isEmpty) {
       return ResultadoRegra.falha('SP009', [
         ErroValidacao(
           codigo: 'SP009',
-          descricao: 'Número do documento (seu número) vazio no Segmento P',
+          descricao: 'Número do documento (seu número) vazio no Segmento P (posição 63-77)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
           posicaoInicio: 63,
-          posicaoFim: 72,
+          posicaoFim: 77,
           campoCnab: 'Número do Documento (Seu Número)',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao: 'Preencha com o número do documento emitido pela empresa',
+          sugestaoCorrecao: 'H7815 Nota 16: Preencha com número da duplicata ou identificador',
+          referenciaFebraban: 'H7815 V8.5 Nota 16 — Número do Documento',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP009', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP010 — Data de vencimento deve ser válida e não anterior a hoje
+  /// SP010 — Data de vencimento: posição 78-85 (DDMMAAAA) — H7815
   static ResultadoRegra sP010DataVencimento(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 80) return ResultadoRegra.sucesso('SP010', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 85) return ResultadoRegra.sucesso('SP010', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 73-80 (índice 72-79)
-    final dataStr = seg.substring(72, 80);
+    final dataStr = seg.substring(77, 85);
 
-    // Aceitar 00000000 como "sem vencimento" (cobrança sem prazo)
     if (dataStr == '00000000') {
       return ResultadoRegra.sucesso('SP010', tempoMs: sw.elapsedMilliseconds);
     }
@@ -320,17 +320,17 @@ class RegraSegmentoP {
       return ResultadoRegra.falha('SP010', [
         ErroValidacao(
           codigo: 'SP010',
-          descricao: 'Data de vencimento com formato inválido no Segmento P',
+          descricao: 'Data de vencimento com formato inválido no Segmento P (posição 78-85)',
           detalhe: 'Encontrado: "$dataStr". Esperado: DDMMAAAA',
           severidade: SeveridadeValidacao.fatal,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 73,
-          posicaoFim: 80,
-          campoCnab: 'Data de Vencimento do Título',
+          posicaoInicio: 78,
+          posicaoFim: 85,
+          campoCnab: 'Data de Vencimento do Boleto',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao: 'Use formato DDMMAAAA (ex: 15012025)',
+          sugestaoCorrecao: 'Use formato DDMMAAAA (ex: 10042026)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
@@ -350,8 +350,8 @@ class RegraSegmentoP {
             severidade: SeveridadeValidacao.fatal,
             categoria: CategoriaValidacao.segmentoP,
             linha: numLinha,
-            posicaoInicio: 73,
-            posicaoFim: 80,
+            posicaoInicio: 78,
+            posicaoFim: 85,
             campoCnab: 'Data de Vencimento',
             indiceTitulo: idxTitulo,
             tipoSegmento: 'P',
@@ -363,28 +363,27 @@ class RegraSegmentoP {
     return ResultadoRegra.sucesso('SP010', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP011 — Data de emissão deve ser válida
+  /// SP011 — Data de emissão: posição 110-117 (DDMMAAAA) — H7815
   static ResultadoRegra sP011DataEmissao(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 114) return ResultadoRegra.sucesso('SP011', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 117) return ResultadoRegra.sucesso('SP011', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 107-114 (índice 106-113)
-    final dataStr = seg.substring(106, 114);
+    final dataStr = seg.substring(109, 117);
 
     if (dataStr == '00000000') {
       return ResultadoRegra.falha('SP011', [
         ErroValidacao(
           codigo: 'SP011',
-          descricao: 'Data de emissão zerada no Segmento P',
+          descricao: 'Data de emissão zerada no Segmento P (posição 110-117)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 107,
-          posicaoFim: 114,
-          campoCnab: 'Data de Emissão do Título',
+          posicaoInicio: 110,
+          posicaoFim: 117,
+          campoCnab: 'Data da Emissão do Boleto',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao: 'Preencha com a data de emissão do título',
+          sugestaoCorrecao: 'Preencha com a data de emissão do boleto',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
@@ -393,14 +392,14 @@ class RegraSegmentoP {
       return ResultadoRegra.falha('SP011', [
         ErroValidacao(
           codigo: 'SP011',
-          descricao: 'Data de emissão com formato inválido no Segmento P',
+          descricao: 'Data de emissão com formato inválido no Segmento P (posição 110-117)',
           detalhe: 'Encontrado: "$dataStr". Esperado: DDMMAAAA',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 107,
-          posicaoFim: 114,
-          campoCnab: 'Data de Emissão do Título',
+          posicaoInicio: 110,
+          posicaoFim: 117,
+          campoCnab: 'Data da Emissão do Boleto',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
         ),
@@ -410,141 +409,137 @@ class RegraSegmentoP {
     return ResultadoRegra.sucesso('SP011', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP012 — Valor do título deve ser > 0
+  /// SP012 — Valor do título: posição 86-100 (15 num, 2 decimais) — H7815
   static ResultadoRegra sP012ValorTitulo(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 95) return ResultadoRegra.sucesso('SP012', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 100) return ResultadoRegra.sucesso('SP012', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 81-95 (índice 80-94) = 15 chars
-    final valorStr = seg.substring(80, 95);
+    final valorStr = seg.substring(85, 100);
     final valor = int.tryParse(valorStr);
 
     if (valor == null || valor <= 0) {
       return ResultadoRegra.falha('SP012', [
         ErroValidacao(
           codigo: 'SP012',
-          descricao: 'Valor do título inválido ou zerado no Segmento P',
-          detalhe: 'Encontrado: "$valorStr" (valor = ${valor == null ? "inválido" : valor / 100.0})',
+          descricao: 'Valor do boleto inválido ou zerado no Segmento P (posição 86-100)',
+          detalhe: 'Encontrado: "$valorStr" (= ${valor == null ? "inválido" : (valor / 100.0).toStringAsFixed(2)})',
           severidade: SeveridadeValidacao.fatal,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 81,
-          posicaoFim: 95,
-          campoCnab: 'Valor Nominal do Título',
+          posicaoInicio: 86,
+          posicaoFim: 100,
+          campoCnab: 'Valor Nominal do Boleto',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao:
-              'Valor deve ser positivo. Formato: 15 dígitos numéricos (13 inteiros + 2 centavos)',
-          referenciaFebraban:
-              'FEBRABAN CNAB 240 v10.7 — Posição 81-95: Valor Nominal do Título',
+          sugestaoCorrecao: 'Valor deve ser positivo. 15 dígitos com 2 decimais implícitos.',
+          referenciaFebraban: 'H7815 V8.5 — Posição 86-100: Valor Nominal',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP012', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP013 — Espécie do título deve ser código válido
+  /// SP013 — Espécie do boleto: posição 107-108 (2 num) — H7815 Nota 20
+  /// Válidos: 02=DM, 04=DS, 12=NP, 13=NR, 17=RC, 20=AP, 31=BCC, 97=CH, 98=ND
   static ResultadoRegra sP013EspecieTitulo(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 105) return ResultadoRegra.sucesso('SP013', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 108) return ResultadoRegra.sucesso('SP013', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 105 (índice 104)
-    final especie = seg.substring(103, 105);
+    final especie = seg.substring(106, 108);
     if (!_codigosEspecie.contains(especie)) {
       return ResultadoRegra.falha('SP013', [
         ErroValidacao(
           codigo: 'SP013',
-          descricao: 'Espécie do título inválida no Segmento P',
-          detalhe: 'Encontrado: "$especie". Espécies válidas: 01 (DM), 02 (NP), etc.',
+          descricao: 'Espécie do boleto inválida no Segmento P (posição 107-108)',
+          detalhe: 'Encontrado: "$especie". H7815 Nota 20: 02=DM, 04=DS, 12=NP, 17=RC, 97=CH',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 105,
-          posicaoFim: 106,
-          campoCnab: 'Espécie do Título',
+          posicaoInicio: 107,
+          posicaoFim: 108,
+          campoCnab: 'Espécie do Boleto',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao:
-              'Use 01 para Duplicata Mercantil (DM) como padrão',
-          referenciaFebraban:
-              'FEBRABAN CNAB 240 v10.7 — Posição 105-106: Espécie do Título',
+          sugestaoCorrecao: 'Use 02 (DM — Duplicata Mercantil) ou 04 (DS — Duplicata de Serviço)',
+          referenciaFebraban: 'H7815 V8.5 Nota 20 — Espécie do Boleto',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP013', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP014 — Aceite deve ser A ou N
+  /// SP014 — Aceite: posição 109 (A/N) — H7815
   static ResultadoRegra sP014Aceite(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 106) return ResultadoRegra.sucesso('SP014', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 109) return ResultadoRegra.sucesso('SP014', tempoMs: sw.elapsedMilliseconds);
 
-    final aceite = seg.substring(105, 106);
+    final aceite = seg.substring(108, 109);
     if (aceite != 'A' && aceite != 'N') {
       return ResultadoRegra.falha('SP014', [
         ErroValidacao(
           codigo: 'SP014',
-          descricao: 'Aceite inválido no Segmento P',
-          detalhe: 'Encontrado: "$aceite". Válidos: "A" (Aceite) ou "N" (Não Aceite)',
+          descricao: 'Aceite inválido no Segmento P (posição 109)',
+          detalhe: 'Encontrado: "$aceite". Válidos: "A" (Aceito) ou "N" (Não Aceito)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 106,
-          posicaoFim: 106,
-          campoCnab: 'Aceite',
+          posicaoInicio: 109,
+          posicaoFim: 109,
+          campoCnab: 'Identificação de Boleto Aceito/Não Aceito',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao: 'Use "A" para título aceito ou "N" para não aceito',
+          sugestaoCorrecao: 'Use "N" para não aceito (padrão)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP014', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP015 — Código de juros deve ser válido (0, 1, 2, 3)
+  /// SP015 — Código de juros: posição 118 (1=Valor/dia, 2=Taxa%, 3=Isento) — H7815
   static ResultadoRegra sP015CodigoJuros(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 115) return ResultadoRegra.sucesso('SP015', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 118) return ResultadoRegra.sucesso('SP015', tempoMs: sw.elapsedMilliseconds);
 
-    final codJuros = seg.substring(114, 115);
-    if (!{'0', '1', '2', '3'}.contains(codJuros)) {
+    final codJuros = seg.substring(117, 118);
+    if (!{'1', '2', '3'}.contains(codJuros)) {
       return ResultadoRegra.falha('SP015', [
         ErroValidacao(
           codigo: 'SP015',
-          descricao: 'Código de juros inválido no Segmento P',
-          detalhe: 'Encontrado: "$codJuros". Válidos: 0=Isento, 1=Valor/dia, 2=Taxa%, 3=Valor mensal',
+          descricao: 'Código de juros inválido no Segmento P (posição 118)',
+          detalhe: 'Encontrado: "$codJuros". H7815: 1=Valor/dia, 2=Taxa mensal%, 3=Isento',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 115,
-          posicaoFim: 115,
-          campoCnab: 'Código de Juros por Mora',
+          posicaoInicio: 118,
+          posicaoFim: 118,
+          campoCnab: 'Código de Juros de Mora',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
+          sugestaoCorrecao: 'Use 3 para isento de juros',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP015', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP016 — Código desconto deve ser válido (0-4)
+  /// SP016 — Código desconto 1: posição 142 (0=Sem, 1=Valor, 2=%) — H7815
   static ResultadoRegra sP016CodigoDesconto(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 139) return ResultadoRegra.sucesso('SP016', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 142) return ResultadoRegra.sucesso('SP016', tempoMs: sw.elapsedMilliseconds);
 
-    final codDesc = seg.substring(138, 139);
-    if (!{'0', '1', '2', '3', '4'}.contains(codDesc)) {
+    final codDesc = seg.substring(141, 142);
+    if (!{'0', '1', '2'}.contains(codDesc)) {
       return ResultadoRegra.falha('SP016', [
         ErroValidacao(
           codigo: 'SP016',
-          descricao: 'Código de desconto inválido no Segmento P',
-          detalhe: 'Encontrado: "$codDesc". Válidos: 0=Sem, 1=Valor, 2=%, 3=Antecipado valor, 4=Antecipado %',
+          descricao: 'Código de desconto 1 inválido no Segmento P (posição 142)',
+          detalhe: 'Encontrado: "$codDesc". H7815: 0=Sem, 1=Valor fixo, 2=Percentual',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 139,
-          posicaoFim: 139,
-          campoCnab: 'Código de Desconto 1',
+          posicaoInicio: 142,
+          posicaoFim: 142,
+          campoCnab: 'Código do Desconto 1',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
         ),
@@ -553,54 +548,55 @@ class RegraSegmentoP {
     return ResultadoRegra.sucesso('SP016', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP017 — Código da moeda deve ser 009 (Real) para Santander
+  /// SP017 — Código da moeda: posição 228-229 (2 chars: 09=Real) — H7815
+  /// ATENÇÃO: H7815 usa 2 chars (09), não 3 como FEBRABAN padrão (009)!
   static ResultadoRegra sP017CodigoMoeda(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 222) return ResultadoRegra.sucesso('SP017', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 229) return ResultadoRegra.sucesso('SP017', tempoMs: sw.elapsedMilliseconds);
 
-    final moeda = seg.substring(219, 222);
-    if (moeda != '009') {
+    final moeda = seg.substring(227, 229);
+    if (moeda != '09') {
       return ResultadoRegra.falha('SP017', [
         ErroValidacao(
           codigo: 'SP017',
-          descricao: 'Código de moeda inválido no Segmento P',
-          detalhe: 'Encontrado: "$moeda". Santander usa "009" = Real',
+          descricao: 'Código de moeda inválido no Segmento P (posição 228-229)',
+          detalhe: 'Encontrado: "$moeda". H7815 usa "09" = Real Brasileiro (2 chars)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 220,
-          posicaoFim: 222,
+          posicaoInicio: 228,
+          posicaoFim: 229,
           campoCnab: 'Código da Moeda',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          referenciaFebraban:
-              'FEBRABAN CNAB 240 v10.7 — Posição 220-222: Código da Moeda = 009 (Real)',
+          referenciaFebraban: 'H7815 V8.5 — Posição 228-229: Código Moeda = 09 (Real)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP017', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP018 — Código para protesto deve ser válido (0-9)
+  /// SP018 — Código para protesto: posição 221 (1 char) — H7815 Nota 25
   static ResultadoRegra sP018CodigoProtesto(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 213) return ResultadoRegra.sucesso('SP018', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 221) return ResultadoRegra.sucesso('SP018', tempoMs: sw.elapsedMilliseconds);
 
-    final codProtesto = seg.substring(212, 213);
+    final codProtesto = seg.substring(220, 221);
     if (!RegExp(r'^\d$').hasMatch(codProtesto)) {
       return ResultadoRegra.falha('SP018', [
         ErroValidacao(
           codigo: 'SP018',
-          descricao: 'Código de protesto inválido no Segmento P',
-          detalhe: 'Encontrado: "$codProtesto". Deve ser 1 dígito (0-9)',
+          descricao: 'Código de protesto inválido no Segmento P (posição 221)',
+          detalhe: 'Encontrado: "$codProtesto". H7815 Nota 25: 1=Protestar, 2=Dev, 3=Não Protestar',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 213,
-          posicaoFim: 213,
+          posicaoInicio: 221,
+          posicaoFim: 221,
           campoCnab: 'Código para Protesto',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
+          referenciaFebraban: 'H7815 V8.5 Nota 25 — Código para Protesto',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
@@ -612,7 +608,6 @@ class RegraSegmentoP {
     final sw = Stopwatch()..start();
     if (seg.length < 13) return ResultadoRegra.sucesso('SP019', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 9-13 (índice 8-12)
     final seqStr = seg.substring(8, 13);
     final seq = int.tryParse(seqStr);
 
@@ -620,7 +615,7 @@ class RegraSegmentoP {
       return ResultadoRegra.falha('SP019', [
         ErroValidacao(
           codigo: 'SP019',
-          descricao: 'Número sequencial do Segmento P não é numérico',
+          descricao: 'Número sequencial do Segmento P não é numérico (posição 9-13)',
           detalhe: 'Valor: "$seqStr"',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.segmentoP,
@@ -658,12 +653,12 @@ class RegraSegmentoP {
   /// SP020 — Valor do abatimento não pode ser maior que o valor do título
   static ResultadoRegra sP020ValorAbatimento(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 192) return ResultadoRegra.sucesso('SP020', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 195) return ResultadoRegra.sucesso('SP020', tempoMs: sw.elapsedMilliseconds);
 
-    // Valor título: pos 81-95 (80-94)
-    // Valor abatimento: pos 178-192 (177-191)
-    final valorTitStr = seg.substring(80, 95);
-    final valorAbaStr = seg.substring(177, 192);
+    // Valor título: pos 86-100 (85-99)
+    // Valor abatimento: pos 181-195 (180-194)
+    final valorTitStr = seg.substring(85, 100);
+    final valorAbaStr = seg.substring(180, 195);
 
     final valorTit = int.tryParse(valorTitStr) ?? 0;
     final valorAba = int.tryParse(valorAbaStr) ?? 0;
@@ -672,282 +667,47 @@ class RegraSegmentoP {
       return ResultadoRegra.falha('SP020', [
         ErroValidacao(
           codigo: 'SP020',
-          descricao: 'Valor do abatimento maior que o valor do título',
-          detalhe:
-              'Título: R\$ ${(valorTit / 100.0).toStringAsFixed(2)} | Abatimento: R\$ ${(valorAba / 100.0).toStringAsFixed(2)}',
+          descricao: 'Valor do abatimento maior que o valor do boleto (pos 181-195)',
+          detalhe: 'Boleto: R\$ ${(valorTit / 100.0).toStringAsFixed(2)} | Abatimento: R\$ ${(valorAba / 100.0).toStringAsFixed(2)}',
           severidade: SeveridadeValidacao.erro,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 178,
-          posicaoFim: 192,
+          posicaoInicio: 181,
+          posicaoFim: 195,
           campoCnab: 'Valor do Abatimento',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
-          sugestaoCorrecao:
-              'O abatimento não pode ser maior ou igual ao valor nominal do título',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP020', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SP021 — Instruções para protesto: dias devem ser numéricos
-  static ResultadoRegra sP021DiasProtesto(String seg, int numLinha, int idxTitulo) {
+  /// SP021 — Identificação na empresa (Seu Número): posição 196-220 (25 alfa) — H7815
+  static ResultadoRegra sP021IdentificacaoEmpresa(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 215) return ResultadoRegra.sucesso('SP021', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 220) return ResultadoRegra.sucesso('SP021', tempoMs: sw.elapsedMilliseconds);
 
-    final diasStr = seg.substring(213, 215);
-    if (!RegExp(r'^\d{2}$').hasMatch(diasStr)) {
+    final seuNum = seg.substring(195, 220).trim();
+    if (seuNum.isEmpty) {
       return ResultadoRegra.falha('SP021', [
         ErroValidacao(
           codigo: 'SP021',
-          descricao: 'Número de dias para protesto inválido no Segmento P',
-          detalhe: 'Encontrado: "$diasStr". Esperado: 2 dígitos numéricos',
+          descricao: 'Identificação do boleto na empresa em branco (posição 196-220)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoP,
           linha: numLinha,
-          posicaoInicio: 214,
-          posicaoFim: 215,
-          campoCnab: 'Número de Dias para Protesto',
+          posicaoInicio: 196,
+          posicaoFim: 220,
+          campoCnab: 'Identificação do Boleto na Empresa (Seu Número)',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'P',
+          sugestaoCorrecao: 'Preencha com o número de controle do boleto na empresa (até 25 chars)',
+          referenciaFebraban: 'H7815 V8.5 — Posição 196-220: Identificação na Empresa (25 posições)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SP021', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP022 — Código para baixa deve ser válido (0, 1, 2)
-  static ResultadoRegra sP022CodigoBaixa(String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 216) return ResultadoRegra.sucesso('SP022', tempoMs: sw.elapsedMilliseconds);
-
-    final codBaixa = seg.substring(215, 216);
-    if (!{'0', '1', '2'}.contains(codBaixa)) {
-      return ResultadoRegra.falha('SP022', [
-        ErroValidacao(
-          codigo: 'SP022',
-          descricao: 'Código para baixa/devolução inválido no Segmento P',
-          detalhe: 'Encontrado: "$codBaixa". Válidos: 0=Não baixar, 1=Baixar, 2=Devolver',
-          severidade: SeveridadeValidacao.aviso,
-          categoria: CategoriaValidacao.segmentoP,
-          linha: numLinha,
-          posicaoInicio: 216,
-          posicaoFim: 216,
-          campoCnab: 'Código para Baixa/Devolução',
-          indiceTitulo: idxTitulo,
-          tipoSegmento: 'P',
-        ),
-      ], tempoMs: sw.elapsedMilliseconds);
-    }
-    return ResultadoRegra.sucesso('SP022', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP023 — Juros: se código ≠ 0, data de juros não pode ser vazia
-  static ResultadoRegra sP023ConsistenciaJuros(String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 138) return ResultadoRegra.sucesso('SP023', tempoMs: sw.elapsedMilliseconds);
-
-    final codJuros = seg.substring(114, 115);
-    final dataJurosStr = seg.substring(115, 123);
-    final valorJurosStr = seg.substring(123, 138);
-    final valorJuros = int.tryParse(valorJurosStr) ?? 0;
-
-    if (codJuros != '0') {
-      if (dataJurosStr == '00000000' && valorJuros == 0) {
-        return ResultadoRegra.falha('SP023', [
-          ErroValidacao(
-            codigo: 'SP023',
-            descricao:
-                'Juros configurados (código $codJuros) mas data e valor zerados',
-            detalhe: 'Código Juros: $codJuros | Data: $dataJurosStr | Valor: $valorJurosStr',
-            severidade: SeveridadeValidacao.aviso,
-            categoria: CategoriaValidacao.segmentoP,
-            linha: numLinha,
-            posicaoInicio: 115,
-            posicaoFim: 138,
-            campoCnab: 'Data/Valor de Juros',
-            indiceTitulo: idxTitulo,
-            tipoSegmento: 'P',
-            sugestaoCorrecao:
-                'Se código de juros ≠ 0, preencha a data e o valor/taxa de juros',
-          ),
-        ], tempoMs: sw.elapsedMilliseconds);
-      }
-    }
-    return ResultadoRegra.sucesso('SP023', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP024 — Desconto: se código ≠ 0, data e valor não podem ser vazios
-  static ResultadoRegra sP024ConsistenciaDesconto(String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 162) return ResultadoRegra.sucesso('SP024', tempoMs: sw.elapsedMilliseconds);
-
-    final codDesc = seg.substring(138, 139);
-    final dataDescStr = seg.substring(139, 147);
-    final valorDescStr = seg.substring(147, 162);
-    final valorDesc = int.tryParse(valorDescStr) ?? 0;
-
-    if (codDesc != '0') {
-      if (dataDescStr == '00000000' && valorDesc == 0) {
-        return ResultadoRegra.falha('SP024', [
-          ErroValidacao(
-            codigo: 'SP024',
-            descricao:
-                'Desconto configurado (código $codDesc) mas data e valor zerados',
-            detalhe:
-                'Código Desconto: $codDesc | Data: $dataDescStr | Valor: $valorDescStr',
-            severidade: SeveridadeValidacao.aviso,
-            categoria: CategoriaValidacao.segmentoP,
-            linha: numLinha,
-            posicaoInicio: 139,
-            posicaoFim: 162,
-            campoCnab: 'Data/Valor do Desconto 1',
-            indiceTitulo: idxTitulo,
-            tipoSegmento: 'P',
-            sugestaoCorrecao:
-                'Se código de desconto ≠ 0, preencha a data e o valor/percentual',
-          ),
-        ], tempoMs: sw.elapsedMilliseconds);
-      }
-    }
-    return ResultadoRegra.sucesso('SP024', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP025 — Data desconto deve ser anterior ao vencimento
-  static ResultadoRegra sP025DataDescontoAnteriorVencimento(
-      String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 162) return ResultadoRegra.sucesso('SP025', tempoMs: sw.elapsedMilliseconds);
-
-    final codDesc = seg.substring(138, 139);
-    if (codDesc == '0') return ResultadoRegra.sucesso('SP025', tempoMs: sw.elapsedMilliseconds);
-
-    final dataDescStr = seg.substring(139, 147);
-    final dataVencStr = seg.substring(72, 80);
-
-    if (dataDescStr == '00000000' || dataVencStr == '00000000') {
-      return ResultadoRegra.sucesso('SP025', tempoMs: sw.elapsedMilliseconds);
-    }
-
-    try {
-      DateTime parseData(String s) => DateTime(
-            int.parse(s.substring(4, 8)),
-            int.parse(s.substring(2, 4)),
-            int.parse(s.substring(0, 2)),
-          );
-
-      final dataDesc = parseData(dataDescStr);
-      final dataVenc = parseData(dataVencStr);
-
-      if (dataDesc.isAfter(dataVenc)) {
-        return ResultadoRegra.falha('SP025', [
-          ErroValidacao(
-            codigo: 'SP025',
-            descricao:
-                'Data do desconto é posterior ao vencimento no Segmento P',
-            detalhe:
-                'Desconto: $dataDescStr | Vencimento: $dataVencStr',
-            severidade: SeveridadeValidacao.erro,
-            categoria: CategoriaValidacao.segmentoP,
-            linha: numLinha,
-            posicaoInicio: 140,
-            posicaoFim: 147,
-            campoCnab: 'Data do Desconto 1',
-            indiceTitulo: idxTitulo,
-            tipoSegmento: 'P',
-            sugestaoCorrecao:
-                'A data do desconto deve ser anterior à data de vencimento',
-          ),
-        ], tempoMs: sw.elapsedMilliseconds);
-      }
-    } catch (_) {}
-
-    return ResultadoRegra.sucesso('SP025', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP026 — Instrução de cobrança 1: código entre 00 e 99
-  static ResultadoRegra sP026InstrucaoCobranca(String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 17) return ResultadoRegra.sucesso('SP026', tempoMs: sw.elapsedMilliseconds);
-
-    // Posição 16-17 (índice 15-16)
-    final instrStr = seg.substring(15, 17);
-    if (!RegExp(r'^\d{2}$').hasMatch(instrStr)) {
-      return ResultadoRegra.falha('SP026', [
-        ErroValidacao(
-          codigo: 'SP026',
-          descricao: 'Código de instrução inválido no Segmento P',
-          detalhe: 'Encontrado: "$instrStr". Esperado: 2 dígitos numéricos (00-99)',
-          severidade: SeveridadeValidacao.aviso,
-          categoria: CategoriaValidacao.segmentoP,
-          linha: numLinha,
-          posicaoInicio: 16,
-          posicaoFim: 17,
-          campoCnab: 'Código da Instrução para Movimento',
-          indiceTitulo: idxTitulo,
-          tipoSegmento: 'P',
-        ),
-      ], tempoMs: sw.elapsedMilliseconds);
-    }
-    return ResultadoRegra.sucesso('SP026', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP027 — Nr sequencial do registro deve ser 5 dígitos
-  static ResultadoRegra sP027NrRegistroValido(String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 13) return ResultadoRegra.sucesso('SP027', tempoMs: sw.elapsedMilliseconds);
-
-    final nrReg = seg.substring(8, 13);
-    if (!RegExp(r'^\d{5}$').hasMatch(nrReg)) {
-      return ResultadoRegra.falha('SP027', [
-        ErroValidacao(
-          codigo: 'SP027',
-          descricao: 'Nr sequencial do registro no lote inválido no Segmento P',
-          detalhe: 'Encontrado: "$nrReg". Esperado: 5 dígitos numéricos',
-          severidade: SeveridadeValidacao.erro,
-          categoria: CategoriaValidacao.segmentoP,
-          linha: numLinha,
-          posicaoInicio: 9,
-          posicaoFim: 13,
-          campoCnab: 'Nr Sequencial do Registro no Lote',
-          indiceTitulo: idxTitulo,
-          tipoSegmento: 'P',
-        ),
-      ], tempoMs: sw.elapsedMilliseconds);
-    }
-    return ResultadoRegra.sucesso('SP027', tempoMs: sw.elapsedMilliseconds);
-  }
-
-  /// SP028 — Valor IOF não pode ser negativo
-  static ResultadoRegra sP028ValorIOF(String seg, int numLinha, int idxTitulo) {
-    final sw = Stopwatch()..start();
-    if (seg.length < 177) return ResultadoRegra.sucesso('SP028', tempoMs: sw.elapsedMilliseconds);
-
-    // Posição 163-177 (índice 162-176)
-    final iofStr = seg.substring(162, 177);
-    final iof = int.tryParse(iofStr) ?? 0;
-
-    if (iof < 0) {
-      return ResultadoRegra.falha('SP028', [
-        ErroValidacao(
-          codigo: 'SP028',
-          descricao: 'Valor de IOF negativo no Segmento P',
-          detalhe: 'Valor encontrado: $iofStr',
-          severidade: SeveridadeValidacao.erro,
-          categoria: CategoriaValidacao.segmentoP,
-          linha: numLinha,
-          posicaoInicio: 163,
-          posicaoFim: 177,
-          campoCnab: 'Valor do IOF',
-          indiceTitulo: idxTitulo,
-          tipoSegmento: 'P',
-          sugestaoCorrecao:
-              'IOF deve ser zero ou positivo. Use zeros se não houver IOF.',
-        ),
-      ], tempoMs: sw.elapsedMilliseconds);
-    }
-    return ResultadoRegra.sucesso('SP028', tempoMs: sw.elapsedMilliseconds);
   }
 
   /// Executa todas as regras de Segmento P
@@ -974,14 +734,7 @@ class RegraSegmentoP {
       sP018CodigoProtesto(segLinha, numLinha, idxTitulo),
       sP019NumeroSequencial(segLinha, numLinha, idxTitulo, nrSeqEsperado),
       sP020ValorAbatimento(segLinha, numLinha, idxTitulo),
-      sP021DiasProtesto(segLinha, numLinha, idxTitulo),
-      sP022CodigoBaixa(segLinha, numLinha, idxTitulo),
-      sP023ConsistenciaJuros(segLinha, numLinha, idxTitulo),
-      sP024ConsistenciaDesconto(segLinha, numLinha, idxTitulo),
-      sP025DataDescontoAnteriorVencimento(segLinha, numLinha, idxTitulo),
-      sP026InstrucaoCobranca(segLinha, numLinha, idxTitulo),
-      sP027NrRegistroValido(segLinha, numLinha, idxTitulo),
-      sP028ValorIOF(segLinha, numLinha, idxTitulo),
+      sP021IdentificacaoEmpresa(segLinha, numLinha, idxTitulo),
     ];
   }
 }

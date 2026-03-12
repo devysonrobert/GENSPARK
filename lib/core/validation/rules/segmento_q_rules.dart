@@ -7,27 +7,31 @@ import '../models/validation_error.dart';
 import '../models/validation_result.dart';
 
 class RegraSegmentoQ {
-  // ── Posições Santander Segmento Q ────────────────────────────────────────
-  // Pos  1- 3: Código Banco (033)
-  // Pos  4- 7: Lote de Serviço
-  // Pos     8: Tipo Registro (3)
-  // Pos  9-13: Nr Sequencial do Registro no Lote
-  // Pos    14: Código Segmento (Q)
-  // Pos    15: Tipo Movimento
-  // Pos 16-17: Código Instrução p/ Movimento
-  // Pos 18-19: Tipo Inscrição Sacado (01=CPF, 02=CNPJ)
-  // Pos 20-33: Nr Inscrição Sacado (CPF 11 com zeros, ou CNPJ 14)
-  // Pos 34-73: Nome do Sacado (40 chars)
-  // Pos 74-113: Endereço do Sacado (40 chars)
-  // Pos 114-128: Bairro do Sacado (15 chars)
-  // Pos 129-136: CEP (8 dígitos)
-  // Pos 137-136+1 : Sufixo CEP (pos 137)
-  // Pos 138-157: Cidade do Sacado (20 chars)
-  // Pos 158-159: UF do Sacado (2 chars)
-  // Pos 160-161: Tipo Inscrição Sacador/Avalista (00=Não presente, 01=CPF, 02=CNPJ)
-  // Pos 162-175: Nr Inscrição Sacador/Avalista (14 dígitos)
-  // Pos 176-215: Nome Sacador/Avalista (40 chars)
-  // Pos 216-240: Uso exclusivo Banco (brancos)
+  // ── Posições H7815 V8.5 Segmento Q ───────────────────────────────────────
+  // Pos  1-  3: Código Banco (033)
+  // Pos  4-  7: Lote de Serviço
+  // Pos      8: Tipo Registro (3)
+  // Pos  9- 13: Nr Sequencial do Registro no Lote
+  // Pos     14: Código Segmento (Q)
+  // Pos     15: Reservado uso Banco (branco)
+  // Pos 16- 17: Código de Movimento Remessa (2 num: 01=Entrada)
+  // Pos     18: Tipo Inscrição do Pagador (1=CPF, 2=CNPJ) — H7815: 1 char!
+  // Pos 19- 33: Nr Inscrição do Pagador — 15 num (zeros + CPF/CNPJ)
+  // Pos 34- 73: Nome do Pagador — 40 alfa
+  // Pos 74-113: Endereço do Pagador — 40 alfa
+  // Pos 114-128: Bairro do Pagador — 15 alfa
+  // Pos 129-133: CEP — 5 num
+  // Pos 134-136: Sufixo CEP — 3 num
+  // Pos 137-151: Cidade — 15 alfa
+  // Pos 152-153: UF do Pagador — 2 alfa
+  // Pos 154: Tipo Inscrição Beneficiário Final (0/1/2) — 1 char!
+  // Pos 155-169: Nr Inscrição Beneficiário Final — 15 num
+  // Pos 170-209: Nome do Beneficiário Final — 40 alfa
+  // Pos 210-212: Reservado uso Banco — 3 brancos
+  // Pos 213-215: Reservado uso Banco — 3 brancos
+  // Pos 216-218: Reservado uso Banco — 3 brancos
+  // Pos 219-221: Reservado uso Banco — 3 brancos
+  // Pos 222-240: Reservado uso Banco — 19 brancos
 
   static const _ufsValidas = {
     'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO',
@@ -35,28 +39,29 @@ class RegraSegmentoQ {
     'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO',
   };
 
-  /// SQ001 — Tipo de inscrição do sacado deve ser 01 (CPF) ou 02 (CNPJ)
+  /// SQ001 — Tipo de inscrição do sacado: posição 18 (1 char: 1=CPF, 2=CNPJ) — H7815
   static ResultadoRegra sQ001TipoInscricaoSacado(
       String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 19) return ResultadoRegra.sucesso('SQ001', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 18) return ResultadoRegra.sucesso('SQ001', tempoMs: sw.elapsedMilliseconds);
 
-    final tipoInsc = seg.substring(17, 19);
-    if (tipoInsc != '01' && tipoInsc != '02') {
+    // H7815: posição 18 = 1 char (1=CPF, 2=CNPJ)
+    final tipoInsc = seg.substring(17, 18);
+    if (tipoInsc != '1' && tipoInsc != '2') {
       return ResultadoRegra.falha('SQ001', [
         ErroValidacao(
           codigo: 'SQ001',
-          descricao: 'Tipo de inscrição do sacado inválido no Segmento Q',
-          detalhe: 'Encontrado: "$tipoInsc". Válidos: "01" (CPF) ou "02" (CNPJ)',
+          descricao: 'Tipo de inscrição do pagador inválido no Segmento Q (posição 18)',
+          detalhe: 'Encontrado: "$tipoInsc". H7815: "1" (CPF) ou "2" (CNPJ)',
           severidade: SeveridadeValidacao.fatal,
           categoria: CategoriaValidacao.segmentoQ,
           linha: numLinha,
           posicaoInicio: 18,
-          posicaoFim: 19,
+          posicaoFim: 18,
           campoCnab: 'Tipo de Inscrição do Pagador',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'Q',
-          sugestaoCorrecao: 'Use 01 para CPF ou 02 para CNPJ',
+          sugestaoCorrecao: 'H7815: 1 char — use 1=CPF ou 2=CNPJ',
           referenciaFebraban:
               'FEBRABAN CNAB 240 v10.7 — Posição 18-19: Tipo Inscrição Pagador',
         ),
@@ -65,47 +70,47 @@ class RegraSegmentoQ {
     return ResultadoRegra.sucesso('SQ001', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ002 — Nr inscrição do sacado deve ter 14 dígitos numéricos
+  /// SQ002 — Nr inscrição do pagador: posição 19-33 (15 num) — H7815
   static ResultadoRegra sQ002NrInscricaoSacado(
       String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
     if (seg.length < 33) return ResultadoRegra.sucesso('SQ002', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 20-33 (índice 19-32) = 14 chars
-    final nrInsc = seg.substring(19, 33);
+    // H7815: posição 19-33 (15 chars = zeros + CNPJ/CPF)
+    final nrInsc = seg.substring(18, 33);
 
-    if (!RegExp(r'^\d{14}$').hasMatch(nrInsc)) {
+    if (!RegExp(r'^\d{15}$').hasMatch(nrInsc)) {
       return ResultadoRegra.falha('SQ002', [
         ErroValidacao(
           codigo: 'SQ002',
-          descricao: 'Nr de inscrição do sacado inválido no Segmento Q',
+          descricao: 'Nr de inscrição do pagador inválido no Segmento Q (posição 19-33)',
           detalhe:
-              'Encontrado: "$nrInsc". Esperado: 14 dígitos (CPF com zeros à esquerda ou CNPJ)',
+              'Encontrado: "$nrInsc". H7815: 15 dígitos (zeros + CPF 11 ou CNPJ 14)',
           severidade: SeveridadeValidacao.fatal,
           categoria: CategoriaValidacao.segmentoQ,
           linha: numLinha,
-          posicaoInicio: 20,
+          posicaoInicio: 19,
           posicaoFim: 33,
           campoCnab: 'Nr de Inscrição do Pagador',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'Q',
           sugestaoCorrecao:
-              'CPF deve ter 11 dígitos precedido de 3 zeros. CNPJ deve ter 14 dígitos',
+              'CPF 11 dígitos com 4 zeros à esq. CNPJ 14 dígitos com 1 zero à esq.',
           referenciaFebraban:
-              'FEBRABAN CNAB 240 v10.7 — Posição 20-33: Nr Inscrição do Pagador',
+              'H7815 V8.5 — Posição 19-33: Nr Inscrição do Pagador (15 posições)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SQ002', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ003 — CPF/CNPJ do sacado não pode ser todos zeros
+  /// SQ003 — CPF/CNPJ do pagador não pode ser todos zeros (posição 19-33)
   static ResultadoRegra sQ003CpfCnpjNaoZerado(
       String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
     if (seg.length < 33) return ResultadoRegra.sucesso('SQ003', tempoMs: sw.elapsedMilliseconds);
 
-    final nrInsc = seg.substring(19, 33);
+    final nrInsc = seg.substring(18, 33);
     if (RegExp(r'^0+$').hasMatch(nrInsc)) {
       return ResultadoRegra.falha('SQ003', [
         ErroValidacao(
@@ -185,142 +190,148 @@ class RegraSegmentoQ {
     return ResultadoRegra.sucesso('SQ005', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ006 — CEP deve ter 8 dígitos numéricos
+  /// SQ006 — CEP: posição 129-136 (8 chars = 5+3 separados) — H7815
   static ResultadoRegra sQ006Cep(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
     if (seg.length < 136) return ResultadoRegra.sucesso('SQ006', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 129-136 (índice 128-135) = 8 chars
-    final cep = seg.substring(128, 136);
-    if (!RegExp(r'^\d{8}$').hasMatch(cep) && cep != '00000000') {
+    // H7815: CEP = posição 129-133 (5 num) + sufixo 134-136 (3 num)
+    final cep5 = seg.substring(128, 133);
+    final suf3 = seg.substring(133, 136);
+    final cepCompleto = cep5 + suf3;
+    if (!RegExp(r'^\d{5}$').hasMatch(cep5) || !RegExp(r'^\d{3}$').hasMatch(suf3)) {
       return ResultadoRegra.falha('SQ006', [
         ErroValidacao(
           codigo: 'SQ006',
-          descricao: 'CEP do sacado inválido no Segmento Q',
-          detalhe: 'Encontrado: "$cep". Esperado: 8 dígitos numéricos sem hífen',
+          descricao: 'CEP do pagador inválido no Segmento Q (posição 129-136)',
+          detalhe: 'Encontrado: "$cepCompleto". H7815: 5 num (CEP) + 3 num (sufixo)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoQ,
           linha: numLinha,
           posicaoInicio: 129,
           posicaoFim: 136,
-          campoCnab: 'CEP do Pagador',
+          campoCnab: 'CEP e Sufixo do Pagador',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'Q',
-          sugestaoCorrecao: 'CEP deve ter 8 dígitos sem hífen (ex: 01310100)',
+          sugestaoCorrecao: 'CEP sem hífen em 2 partes: 5 dígitos + 3 dígitos (ex: 06460 070)',
+          referenciaFebraban: 'H7815 V8.5 — Posição 129-136: CEP (5) + Sufixo (3)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SQ006', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ007 — Cidade do sacado não pode estar vazia
+  /// SQ007 — Cidade do pagador: posição 137-151 (15 alfa) — H7815
   static ResultadoRegra sQ007CidadeSacado(
       String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 157) return ResultadoRegra.sucesso('SQ007', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 151) return ResultadoRegra.sucesso('SQ007', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 138-157 (índice 137-156) = 20 chars
-    final cidade = seg.substring(137, 157).trim();
+    // H7815: posição 137-151 (15 chars) — difere do layout anterior (138-157, 20 chars)
+    final cidade = seg.substring(136, 151).trim();
     if (cidade.isEmpty) {
       return ResultadoRegra.falha('SQ007', [
         ErroValidacao(
           codigo: 'SQ007',
-          descricao: 'Cidade do sacado vazia no Segmento Q',
+          descricao: 'Cidade do pagador vazia no Segmento Q (posição 137-151)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoQ,
           linha: numLinha,
-          posicaoInicio: 138,
-          posicaoFim: 157,
+          posicaoInicio: 137,
+          posicaoFim: 151,
           campoCnab: 'Cidade do Pagador',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'Q',
-          sugestaoCorrecao: 'Preencha a cidade do sacado',
+          sugestaoCorrecao: 'Preencha a cidade do pagador (até 15 chars)',
+          referenciaFebraban: 'H7815 V8.5 — Posição 137-151: Cidade do Pagador (15 posições)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SQ007', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ008 — UF do sacado deve ser válida (2 letras maiúsculas)
+  /// SQ008 — UF do pagador: posição 152-153 (2 alfa) — H7815
   static ResultadoRegra sQ008UfSacado(String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 159) return ResultadoRegra.sucesso('SQ008', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 153) return ResultadoRegra.sucesso('SQ008', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 158-159 (índice 157-158) = 2 chars
-    final uf = seg.substring(157, 159);
+    // H7815: posição 152-153 (índice 151-152) = 2 chars
+    final uf = seg.substring(151, 153);
     if (uf.trim().isNotEmpty && !_ufsValidas.contains(uf)) {
       return ResultadoRegra.falha('SQ008', [
         ErroValidacao(
           codigo: 'SQ008',
-          descricao: 'UF do sacado inválida no Segmento Q',
+          descricao: 'UF do pagador inválida no Segmento Q (posição 152-153)',
           detalhe: 'Encontrado: "$uf". Use a sigla do estado (ex: SP, RJ, MG)',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoQ,
           linha: numLinha,
-          posicaoInicio: 158,
-          posicaoFim: 159,
-          campoCnab: 'UF/Estado do Pagador',
+          posicaoInicio: 152,
+          posicaoFim: 153,
+          campoCnab: 'Unidade da Federação do Pagador',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'Q',
           sugestaoCorrecao: 'Use a sigla de 2 letras do estado (SP, RJ, MG, etc.)',
+          referenciaFebraban: 'H7815 V8.5 — Posição 152-153: UF do Pagador',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SQ008', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ009 — Tipo inscrição sacador: se preenchido, deve ser 01 ou 02
+  /// SQ009 — Tipo inscrição Beneficiário Final: posição 154 (1 char) — H7815
   static ResultadoRegra sQ009TipoInscricaoAvalista(
       String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 161) return ResultadoRegra.sucesso('SQ009', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 154) return ResultadoRegra.sucesso('SQ009', tempoMs: sw.elapsedMilliseconds);
 
-    // Posição 160-161 (índice 159-160) = tipo do sacador/avalista
-    // 00 = não presente, 01 = CPF, 02 = CNPJ
-    final tipoAval = seg.substring(159, 161);
-    if (tipoAval != '00' && tipoAval != '01' && tipoAval != '02') {
+    // H7815: posição 154 (1 char) = 0=não presente, 1=CPF, 2=CNPJ
+    final tipoAval = seg.substring(153, 154);
+    if (tipoAval != '0' && tipoAval != '1' && tipoAval != '2') {
       return ResultadoRegra.falha('SQ009', [
         ErroValidacao(
           codigo: 'SQ009',
-          descricao: 'Tipo de inscrição do sacador/avalista inválido no Segmento Q',
-          detalhe: 'Encontrado: "$tipoAval". Válidos: 00=Não presente, 01=CPF, 02=CNPJ',
+          descricao: 'Tipo de inscrição do Beneficiário Final inválido no Segmento Q (posição 154)',
+          detalhe: 'Encontrado: "$tipoAval". H7815: 0=Não presente, 1=CPF, 2=CNPJ',
           severidade: SeveridadeValidacao.aviso,
           categoria: CategoriaValidacao.segmentoQ,
           linha: numLinha,
-          posicaoInicio: 160,
-          posicaoFim: 161,
-          campoCnab: 'Tipo de Inscrição do Sacador/Avalista',
+          posicaoInicio: 154,
+          posicaoFim: 154,
+          campoCnab: 'Tipo de Inscrição do Beneficiário Final',
           indiceTitulo: idxTitulo,
           tipoSegmento: 'Q',
+          referenciaFebraban: 'H7815 V8.5 — Posição 154: Tipo Inscrição Beneficiário Final (1 char)',
         ),
       ], tempoMs: sw.elapsedMilliseconds);
     }
     return ResultadoRegra.sucesso('SQ009', tempoMs: sw.elapsedMilliseconds);
   }
 
-  /// SQ010 — Se sacador/avalista presente, nome não pode ser vazio
+  /// SQ010 — Se Beneficiário Final presente, nome não pode ser vazio (posição 170-209)
   static ResultadoRegra sQ010NomeAvalista(
       String seg, int numLinha, int idxTitulo) {
     final sw = Stopwatch()..start();
-    if (seg.length < 215) return ResultadoRegra.sucesso('SQ010', tempoMs: sw.elapsedMilliseconds);
+    if (seg.length < 209) return ResultadoRegra.sucesso('SQ010', tempoMs: sw.elapsedMilliseconds);
 
-    final tipoAval = seg.length >= 161 ? seg.substring(159, 161) : '00';
+    // H7815: tipo Benef. Final é 1 char na posição 154
+    final tipoAval = seg.length >= 154 ? seg.substring(153, 154) : '0';
 
-    if (tipoAval != '00') {
-      // Posição 176-215 (índice 175-214) = 40 chars
-      final nomeAval = seg.substring(175, 215).trim();
+    if (tipoAval != '0') {
+      // H7815 posição 170-209 = Nome do Beneficiário Final (40 chars)
+      final nomeAval = seg.substring(169, 209).trim();
       if (nomeAval.isEmpty) {
         return ResultadoRegra.falha('SQ010', [
           ErroValidacao(
             codigo: 'SQ010',
-            descricao: 'Nome do sacador/avalista vazio apesar de tipo indicado no Segmento Q',
-            detalhe: 'Tipo inscrição sacador: $tipoAval',
+            descricao: 'Nome do Beneficiário Final vazio no Segmento Q (posição 170-209)',
+            detalhe: 'Tipo inscrição Benef. Final: $tipoAval',
             severidade: SeveridadeValidacao.aviso,
             categoria: CategoriaValidacao.segmentoQ,
             linha: numLinha,
-            posicaoInicio: 176,
-            posicaoFim: 215,
-            campoCnab: 'Nome do Sacador/Avalista',
+            posicaoInicio: 170,
+            posicaoFim: 209,
+            campoCnab: 'Nome do Beneficiário Final',
             indiceTitulo: idxTitulo,
             tipoSegmento: 'Q',
             sugestaoCorrecao:
