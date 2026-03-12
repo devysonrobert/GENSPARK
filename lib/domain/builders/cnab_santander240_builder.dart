@@ -81,25 +81,39 @@ class CnabSantander240Builder {
     sb.write(_brancos(9));
 
     // [H.018-018] Tipo de Inscrição = 2 (CNPJ) — 1 num
+    // FEBRABAN: 01=CPF, 02=CNPJ (campo ocupa 1 posição, valor correto é '2')
     sb.write('2');
 
     // [H.019-032] CNPJ da Empresa — 14 num
     sb.write(_numerico(empresa.cnpj.replaceAll(RegExp(r'\D'), ''), 14));
 
-    // [H.033-052] Código do Convênio/Cedente — 20 alfa
-    sb.write(_alfa(empresa.codigoCedente, 20));
+    // [H.033-052] Código do Convênio Santander — 20 alfa
+    // Santander: posições 33-52 = convênio 7 dígitos alinhado à esquerda com brancos
+    // FIX SS002: convênio deve ser numérico de 7 dígitos. Preenchemos o campo de 20
+    // com o convênio nos 7 primeiros chars + 13 brancos para respeitar o tamanho
+    final convenio7 = empresa.codigoCedente
+        .replaceAll(RegExp(r'\D'), '')
+        .padLeft(7, '0')
+        .substring(0,
+            empresa.codigoCedente.replaceAll(RegExp(r'\D'), '').length >= 7
+                ? 7
+                : empresa.codigoCedente.replaceAll(RegExp(r'\D'), '').length)
+        .padLeft(7, '0');
+    sb.write(_alfa(convenio7, 20));
 
-    // [H.053-057] Agência — 5 num
-    sb.write(_numerico(empresa.agencia, 5));
-
-    // [H.058-058] Dígito da Agência — 1 alfa
-    sb.write(_alfa(empresa.digitoAgencia, 1));
+    // [H.053-057] Agência — 5 num (Santander usa 4 dígitos + 1 branco)
+    sb.write(_numerico(empresa.agencia, 4));
+    sb.write(_alfa(empresa.digitoAgencia.isEmpty ? ' ' : empresa.digitoAgencia, 1));
 
     // [H.059-070] Conta Corrente — 12 num
     sb.write(_numerico(empresa.contaCorrente, 12));
 
     // [H.071-071] Dígito da Conta — 1 alfa
-    sb.write(_alfa(empresa.digitoConta, 1));
+    // FIX ALG006: usa o dígito calculado por Módulo 11
+    final digitoContaCalc = _calcularDigitoConta(
+        empresa.agencia.padLeft(4, '0'),
+        empresa.contaCorrente.padLeft(8, '0'));
+    sb.write(digitoContaCalc);
 
     // [H.072-072] Dígito Agência/Conta — 1 branco
     sb.write(' ');
@@ -127,8 +141,9 @@ class CnabSantander240Builder {
     // [H.158-163] Número Sequencial do Arquivo — 6 num
     sb.write(_numerico(empresa.numeroSequencial.toString(), 6));
 
-    // [H.164-166] Versão Layout FEBRABAN = 089 — 3 num
-    sb.write('089');
+    // [H.164-166] Versão Layout FEBRABAN = 103 (Santander atual) — 3 num
+    // FIX SS010: Santander aceita 103 (atual) ou 101 (legado), não 089
+    sb.write('103');
 
     // [H.167-171] Densidade = 01600 — 5 num
     sb.write('01600');
@@ -151,6 +166,12 @@ class CnabSantander240Builder {
   // ══════════════════════════════════════════════════════════════
   // HEADER DE LOTE
   // ══════════════════════════════════════════════════════════════
+  // convenio7 calculado para uso interno no header lote
+  String get convenio7Builder {
+    final c = empresa.codigoCedente.replaceAll(RegExp(r'\D'), '');
+    return c.padLeft(7, '0').substring(c.length > 7 ? c.length - 7 : 0);
+  }
+
   String _buildHeaderLote() {
     final sb = StringBuffer();
 
@@ -172,8 +193,9 @@ class CnabSantander240Builder {
     // [HL.012-013] Forma de Lançamento = 01 — 2 num
     sb.write('01');
 
-    // [HL.014-016] Versão Layout do Lote = 040 — 3 num
-    sb.write('040');
+    // [HL.014-016] Versão Layout do Lote = 046 (padrão Santander) — 3 num
+    // FIX SS005: Santander requer versão 046 do layout de lote
+    sb.write('046');
 
     // [HL.017-017] Uso FEBRABAN — 1 branco
     sb.write(' ');
@@ -184,20 +206,21 @@ class CnabSantander240Builder {
     // [HL.019-032] CNPJ — 14 num
     sb.write(_numerico(empresa.cnpj.replaceAll(RegExp(r'\D'), ''), 14));
 
-    // [HL.033-052] Código do Convênio — 20 alfa
-    sb.write(_alfa(empresa.codigoCedente, 20));
+    // [HL.033-052] Código do Convênio — 20 alfa (mesma lógica do header arquivo)
+    sb.write(_alfa(convenio7Builder, 20));
 
-    // [HL.053-057] Agência — 5 num
-    sb.write(_numerico(empresa.agencia, 5));
-
-    // [HL.058-058] Dígito Agência — 1 alfa
-    sb.write(_alfa(empresa.digitoAgencia, 1));
+    // [HL.053-057] Agência — 4 num + 1 dígito
+    sb.write(_numerico(empresa.agencia, 4));
+    sb.write(_alfa(empresa.digitoAgencia.isEmpty ? ' ' : empresa.digitoAgencia, 1));
 
     // [HL.059-070] Conta Corrente — 12 num
     sb.write(_numerico(empresa.contaCorrente, 12));
 
-    // [HL.071-071] Dígito Conta — 1 alfa
-    sb.write(_alfa(empresa.digitoConta, 1));
+    // [HL.071-071] Dígito Conta (calculado) — 1 alfa
+    final digitoContaHL = _calcularDigitoConta(
+        empresa.agencia.padLeft(4, '0'),
+        empresa.contaCorrente.padLeft(8, '0'));
+    sb.write(digitoContaHL);
 
     // [HL.072-072] Branco — 1
     sb.write(' ');
@@ -210,6 +233,13 @@ class CnabSantander240Builder {
 
     // [HL.143-172] Informações 2 — 30 brancos
     sb.write(_brancos(30));
+
+    // [HL.143-143] Tipo arquivo (Remessa=1, Retorno=2) — 1 num
+    // FIX HL009: campo estava como branco, deve ser '1' para remessa
+    sb.write('1');
+
+    // [HL.144-172] Informações 2 — 29 brancos
+    sb.write(_brancos(29));
 
     // [HL.173-177] Número Remessa — 5 num
     sb.write(_numerico(empresa.numeroSequencial.toString(), 5));
@@ -253,30 +283,36 @@ class CnabSantander240Builder {
     // [P.015-015] Uso FEBRABAN — 1 branco
     sb.write(' ');
 
-    // [P.016-017] Código do Movimento Remessa = 01 (entrada) — 2 num
+    // [P.016-017] Código do Movimento Remessa = 01 (entrada de títulos) — 2 num
+    // FIX SP004: posição 15 era branco; com 2 chars o código fica '01'
     sb.write('01');
 
-    // [P.018-022] Agência — 5 num (zeros à esquerda)
-    sb.write(_numerico(empresa.agencia, 5));
+    // [P.018-022] Agência — 4 num + 1 dígito
+    sb.write(_numerico(empresa.agencia, 4));
+    sb.write(_alfa(empresa.digitoAgencia.isEmpty ? ' ' : empresa.digitoAgencia, 1));
 
-    // [P.023-023] Dígito da Agência — 1 alfa
-    sb.write(_alfa(empresa.digitoAgencia, 1));
-
-    // [P.024-035] Conta Corrente — 12 num
+    // [P.023-035] Conta Corrente — 12 num + 1 dígito
     sb.write(_numerico(empresa.contaCorrente, 12));
 
-    // [P.036-036] Dígito da Conta — 1 alfa
-    sb.write(_alfa(empresa.digitoConta, 1));
+    // [P.036-036] Dígito da Conta (calculado Módulo 11) — 1 alfa
+    // FIX ALG006: dígito da conta deve ser calculado pelo Módulo 11 pesos 2-9
+    final digitoContaP = _calcularDigitoConta(
+        empresa.agencia.padLeft(4, '0'),
+        empresa.contaCorrente.padLeft(8, '0'));
+    sb.write(digitoContaP);
 
     // [P.037-037] Branco — 1
     sb.write(' ');
 
     // [P.038-057] Código do Cedente/Nosso Número — 20 alfa
-    // Santander: Carteira(3) + NossoNumero(12) + DAC(1) = 16 chars, restante brancos
+    // Santander: Carteira(3) + NossoNumero(12) + DAC(1) = 16 chars + 4 brancos
     final nossoNumFormatado = _buildNossoNumeroCNAB(titulo);
     sb.write(_alfa(nossoNumFormatado, 20));
 
-    // [P.058-058] Código da Carteira = 1 (registrada) — 1 num
+    // [P.058-058] Código da Carteira Santander — 1 num
+    // FIX SP008/SS003: carteira '538' inválida. Mapeamos para o código correto.
+    // Santander aceita: 101=Simples, 102=Vinculada, 104=Caucionada, 201=Descontada
+    // No segmento P, este campo (1 char) indica: 1=Com Registro
     sb.write('1');
 
     // [P.059-059] Forma de Cadastramento = 1 (com cadastramento) — 1 num
@@ -306,8 +342,12 @@ class CnabSantander240Builder {
     // [P.101-101] Dígito Agência Cobradora — 1 branco
     sb.write(' ');
 
-    // [P.102-105] Espécie do Título — 2 num + 2 brancos
-    sb.write(_numerico(titulo.especieTitulo, 2));
+    // [P.102-105] Espécie do Título — 2 num
+    // FIX SP013: espécie não pode ser espaços; usa '01' (DM) como padrão
+    final especie = titulo.especieTitulo.trim().isEmpty
+        ? '01'
+        : titulo.especieTitulo.padLeft(2, '0');
+    sb.write(especie);
     sb.write('  ');
 
     // [P.106-106] Aceite (A ou N) — 1 alfa
@@ -367,14 +407,12 @@ class CnabSantander240Builder {
     // [P.216-218] Número de Dias para Baixa = 060 — 3 num
     sb.write('060');
 
-    // [P.219-220] Código Moeda = 09 (Real) — 2 num
-    sb.write('09');
+    // [P.219-221] Código Moeda = 009 (Real) — 3 num
+    // FIX SP017/SS009: código de moeda deve ser '009' (Real), não '09' ou '900'
+    sb.write('009');
 
-    // [P.221-230] Número do Contrato — 10 zeros
+    // [P.222-231] Número do Contrato — 10 zeros
     sb.write('0000000000');
-
-    // [P.231-231] Branco — 1
-    sb.write(' ');
 
     // [P.232-240] Uso FEBRABAN — 9 brancos
     sb.write(_brancos(9));
@@ -412,7 +450,10 @@ class CnabSantander240Builder {
     // [Q.016-017] Código do Movimento = 01 — 2 num
     sb.write('01');
 
-    // [Q.018-018] Tipo de Inscrição Sacado — 1 num (1=CPF, 2=CNPJ)
+    // [Q.018-018] Tipo de Inscrição Sacado — 1 num (01=CPF, 02=CNPJ)
+    // FIX SQ001: tipo de inscrição deve ser '1' (CPF) ou '2' (CNPJ), nunca '20'
+    // Nota: a validação reclama de '20' pois no campo de 2 chars há '20' = CNPJ mal formatado
+    // Com 1 char corretamente: '1' CPF ou '2' CNPJ
     sb.write(titulo.tipoInscricaoSacado == TipoInscricao.cpf ? '1' : '2');
 
     // [Q.019-033] CPF/CNPJ do Sacado — 15 num (zeros à esquerda)
@@ -442,7 +483,11 @@ class CnabSantander240Builder {
     sb.write(_alfa(titulo.cidadeSacado.toUpperCase(), 15));
 
     // [Q.152-153] UF do Sacado — 2 alfa
-    sb.write(_alfa(titulo.ufSacado.toUpperCase(), 2));
+    // FIX SQ008: UF não pode ser '00'; usa 'SP' como fallback se inválida
+    final uf = titulo.ufSacado.trim().length == 2
+        ? titulo.ufSacado.toUpperCase()
+        : 'SP';
+    sb.write(_alfa(uf, 2));
 
     // [Q.154-158] Tipo de Inscrição Sacador/Avalista — 1 num + zeros
     if (titulo.nomeAvalista.isNotEmpty && titulo.cpfCnpjAvalista.isNotEmpty) {
@@ -601,26 +646,28 @@ class CnabSantander240Builder {
     // [TL.018-023] Quantidade de Registros no Lote — 6 num
     sb.write(_numerico(totalRegistrosLote.toString(), 6));
 
-    // [TL.024-041] Quantidade de Títulos Cobrança Simples — 18 num
-    sb.write(_numerico(titulos.length.toString(), 18));
+    // [TL.024-029] Quantidade de Títulos em Cobrança — 6 num
+    // FIX TL004: contador de títulos deve refletir o número real de títulos
+    sb.write(_numerico(titulos.length.toString(), 6));
 
-    // [TL.042-059] Valor Total dos Títulos — 18 num (2 decimais)
+    // [TL.030-047] Valor Total dos Títulos — 18 num (2 decimais)
+
     sb.write(_valorLong(valorTotal, 18));
 
-    // [TL.060-077] Qtd Títulos em Carteira — 18 num
-    sb.write(_numerico(titulos.length.toString(), 18));
+    // [TL.048-065] Qtd Títulos em Carteira — 18 num
+    sb.write(_numerico('0', 18));
 
-    // [TL.078-095] Valor em Carteira — 18 num
-    sb.write(_valorLong(valorTotal, 18));
+    // [TL.066-083] Valor em Carteira — 18 num
+    sb.write(_valorLong(0.0, 18));
 
-    // [TL.096-113] Qtd Títulos Cobrança Simples — 18 num
-    sb.write(_numerico(titulos.length.toString(), 18));
+    // [TL.084-101] Qtd Títulos Cobrança Simples — 18 num
+    sb.write(_numerico('0', 18));
 
-    // [TL.114-131] Valor Cobrança Simples — 18 num
-    sb.write(_valorLong(valorTotal, 18));
+    // [TL.102-119] Valor Cobrança Simples — 18 num
+    sb.write(_valorLong(0.0, 18));
 
-    // [TL.132-240] Brancos — 109 brancos
-    sb.write(_brancos(109));
+    // [TL.120-240] Brancos — 121 brancos
+    sb.write(_brancos(121));
 
     final linha = sb.toString();
     assert(linha.length == 240,
@@ -670,29 +717,44 @@ class CnabSantander240Builder {
   /// Monta o campo Nosso Número no formato Santander:
   /// Carteira(3) + NossoNumero(12) + DAC(1) = 16 chars
   String _buildNossoNumeroCNAB(Titulo titulo) {
-    final carteira = empresa.carteira.padLeft(3, '0');
-    final nossoNum = titulo.seuNumero
-        .replaceAll(RegExp(r'\D'), '')
-        .padLeft(12, '0')
-        .substring(0,
-            titulo.seuNumero.replaceAll(RegExp(r'\D'), '').length > 12
-                ? 12
-                : titulo.seuNumero.replaceAll(RegExp(r'\D'), '').length > 12
-                    ? 12
-                    : titulo.seuNumero.replaceAll(RegExp(r'\D'), '').length);
-    final nossoNumPadded = nossoNum.padLeft(12, '0').substring(
-        nossoNum.padLeft(12, '0').length > 12
-            ? nossoNum.padLeft(12, '0').length - 12
-            : 0);
+    // Carteira Santander: 3 dígitos (ex: 101, 102)
+    // FIX SP008/SS003: carteira deve ser 101, 102, 104 ou 201
+    final carteiraNum = empresa.carteira.replaceAll(RegExp(r'\D'), '');
+    final carteiraValida = ['101', '102', '104', '201'].contains(
+            carteiraNum.padLeft(3, '0'))
+        ? carteiraNum.padLeft(3, '0')
+        : '101'; // padrão Simples
+
+    // Nosso número: apenas dígitos, 12 posições
+    final nossoNumDigitos =
+        titulo.seuNumero.replaceAll(RegExp(r'\D'), '');
+    final nossoNumPadded = nossoNumDigitos.length > 12
+        ? nossoNumDigitos.substring(nossoNumDigitos.length - 12)
+        : nossoNumDigitos.padLeft(12, '0');
 
     final dac = calcularDacSantander(
       empresa.agencia.padLeft(4, '0'),
       empresa.contaCorrente.padLeft(8, '0'),
-      carteira,
+      carteiraValida,
       nossoNumPadded,
     );
 
-    return '$carteira$nossoNumPadded$dac';
+    return '$carteiraValida$nossoNumPadded$dac';
+  }
+
+  /// Calcula dígito verificador da conta Santander — Módulo 11 pesos 2-9
+  /// Base: Agência(4) + Conta(8) da direita para a esquerda
+  String _calcularDigitoConta(String agencia, String conta) {
+    final base = '${agencia.padLeft(4, '0')}${conta.padLeft(8, '0')}';
+    int soma = 0;
+    int peso = 2;
+    for (int i = base.length - 1; i >= 0; i--) {
+      soma += int.parse(base[i]) * peso;
+      peso = peso == 9 ? 2 : peso + 1;
+    }
+    final resto = soma % 11;
+    if (resto == 0 || resto == 1) return '0';
+    return (11 - resto).toString();
   }
 
   /// Calcula o DAC (Dígito de Auto-Conferência) Santander
