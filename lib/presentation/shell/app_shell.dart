@@ -77,8 +77,8 @@ class _AppHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 56,
-      color: AppColors.surface,
       decoration: const BoxDecoration(
+        color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 24),

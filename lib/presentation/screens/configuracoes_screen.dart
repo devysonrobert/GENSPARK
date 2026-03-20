@@ -38,6 +38,7 @@ class _ConfiguracoesScreenState extends ConsumerState<ConfiguracoesScreen> {
   late TextEditingController _contaCorrenteCtrl;
   late TextEditingController _digitoContaCtrl;
   late TextEditingController _codigoCedenteCtrl;
+  late TextEditingController _codigoTransmissaoCtrl;
   String _carteira = '101';
   String _modalidade = '01';
   late TextEditingController _numeroSeqCtrl;
