@@ -73,6 +73,7 @@ class _ConfiguracoesScreenState extends ConsumerState<ConfiguracoesScreen> {
     _contaCorrenteCtrl = TextEditingController(text: config.contaCorrente);
     _digitoContaCtrl = TextEditingController(text: config.digitoConta);
     _codigoCedenteCtrl = TextEditingController(text: config.codigoCedente);
+    _codigoTransmissaoCtrl = TextEditingController(text: config.codigoTransmissao);
     _carteira = config.carteira.isEmpty ? '101' : config.carteira;
     _modalidade = config.modalidade.isEmpty ? '01' : config.modalidade;
     _numeroSeqCtrl = TextEditingController(
@@ -93,6 +94,7 @@ class _ConfiguracoesScreenState extends ConsumerState<ConfiguracoesScreen> {
     _contaCorrenteCtrl.dispose();
     _digitoContaCtrl.dispose();
     _codigoCedenteCtrl.dispose();
+    _codigoTransmissaoCtrl.dispose();
     _numeroSeqCtrl.dispose();
     super.dispose();
   }
@@ -130,6 +132,7 @@ class _ConfiguracoesScreenState extends ConsumerState<ConfiguracoesScreen> {
         contaCorrente: _contaCorrenteCtrl.text.trim().padLeft(8, '0'),
         digitoConta: _digitoContaCtrl.text.trim(),
         codigoCedente: _codigoCedenteCtrl.text.trim(),
+        codigoTransmissao: _codigoTransmissaoCtrl.text.trim(),
         carteira: _carteira,
         modalidade: _modalidade,
         numeroSequencial:
@@ -489,6 +492,26 @@ class _ConfiguracoesScreenState extends ConsumerState<ConfiguracoesScreen> {
                               validator: (v) =>
                                   v == null || v.isEmpty
                                       ? 'Código do Cedente obrigatório'
+                                      : null,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildField(
+                            label: 'Código de Transmissão',
+                            required: true,
+                            tooltip: '[H.033-047 / Nota 3] 15 chars alfanuméricos fornecidos pelo Santander (ex: 337100000803385)',
+                            child: TextFormField(
+                              controller: _codigoTransmissaoCtrl,
+                              maxLength: 15,
+                              keyboardType: TextInputType.text,
+                              decoration: const InputDecoration(
+                                hintText: '337100000803385',
+                                counterText: '',
+                                helperText: 'Informado pelo banco na contratação do CNAB',
+                              ),
+                              validator: (v) =>
+                                  v == null || v.trim().isEmpty
+                                      ? 'Código de Transmissão obrigatório'
                                       : null,
                             ),
                           ),

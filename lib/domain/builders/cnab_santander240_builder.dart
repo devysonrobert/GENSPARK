@@ -91,11 +91,9 @@ class CnabSantander240Builder {
     // [018-032] Número de inscrição da empresa (CNPJ) — 15 num (zeros + doc)
     sb.write(_numerico(empresa.cnpj.replaceAll(RegExp(r'\D'), ''), 15));
 
-    // [033-047] Código de Transmissão — 15 alfa
-    // Santander fornece este código ao contratar o serviço CNAB
-    // Usar convênio (7 dígitos) preenchido à direita com brancos = 15 chars
-    final conv = _conv7;
-    sb.write(_alfa(conv, 15));
+    // [033-047] Código de Transmissão — 15 alfa (Nota 3)
+    // Santander fornece este código ao contratar o serviço CNAB (ex: 337100000803385)
+    sb.write(_codigoTransmissao15);
 
     // [048-072] Reservado (uso Banco) — 25 brancos
     sb.write(_brancos(25));
@@ -132,6 +130,25 @@ class CnabSantander240Builder {
     assert(linha.length == 240,
         'Header arquivo: ${linha.length} chars (esperado 240)');
     return linha;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // CÓDIGO DE TRANSMISSÃO — Nota 3 H7815
+  // 15 chars alfanuméricos fornecidos pelo Santander.
+  // Prioridade: campo codigoTransmissao (15 chars) se preenchido;
+  // fallback: convênio (7 dígitos) padLeft 15 para compatibilidade.
+  // ══════════════════════════════════════════════════════════════
+  String get _codigoTransmissao15 {
+    final ct = empresa.codigoTransmissao.trim();
+    if (ct.isNotEmpty) {
+      // Usar exatamente os 15 chars informados pelo banco
+      if (ct.length >= 15) return ct.substring(0, 15);
+      return ct.padRight(15); // preenche com espaços à direita
+    }
+    // Fallback legado: convênio de 7 dígitos
+    final c = empresa.codigoCedente.replaceAll(RegExp(r'\D'), '');
+    final conv7 = c.length >= 7 ? c.substring(c.length - 7) : c.padLeft(7, '0');
+    return conv7.padRight(15);
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -179,8 +196,8 @@ class CnabSantander240Builder {
     // [034-053] Reservado (uso Banco) — 20 brancos
     sb.write(_brancos(20));
 
-    // [054-068] Código de Transmissão — 15 alfa
-    sb.write(_alfa(_conv7, 15));
+    // [054-068] Código de Transmissão — 15 alfa (Nota 3)
+    sb.write(_codigoTransmissao15);
 
     // [069-073] Reservado (uso Banco) — 5 brancos
     sb.write(_brancos(5));
@@ -242,18 +259,27 @@ class CnabSantander240Builder {
     sb.write('01');
 
     // [018-021] Agência do Destinatária — 4 num
-    sb.write(_numerico(empresa.agencia, 4));
+    // Santander: 4 dígitos numéricos, zeros à esquerda
+    final agencia4 = empresa.agencia.replaceAll(RegExp(r'\D'), '').padLeft(4, '0');
+    sb.write(agencia4.length > 4 ? agencia4.substring(agencia4.length - 4) : agencia4);
 
     // [022-022] Dígito da Ag do Destinatária — 1 num/alfa
     sb.write(_alfa(empresa.digitoAgencia.isEmpty ? '0' : empresa.digitoAgencia, 1));
 
     // [023-031] Número da conta corrente — 9 num
-    // H7815: conta com 9 posições (Santander usa 8 dígitos + zero à esq.)
-    sb.write(_numerico(empresa.contaCorrente, 9));
+    // H7815: campo tem 9 posições mas Santander usa 8 dígitos numéricos
+    // O 1º dígito do campo de 9 deve ser '0', seguido pelos 8 dígitos da conta
+    final conta8 = empresa.contaCorrente.replaceAll(RegExp(r'\D'), '').padLeft(8, '0');
+    final conta8norm = conta8.length > 8 ? conta8.substring(conta8.length - 8) : conta8;
+    sb.write('0$conta8norm'); // 1 zero + 8 dígitos = 9 posições
 
     // [032-032] Dígito verificador da conta — 1 num
-    // DAC = Módulo11(AG(4) + Conta(8)) — algoritmo Santander
-    sb.write(_calcularDigitoConta(empresa.agencia, empresa.contaCorrente));
+    // Santander: se o digitoConta estiver configurado, usá-lo diretamente;
+    // caso contrário calcular via Módulo 11
+    final digitoContaFinal = empresa.digitoConta.isNotEmpty
+        ? empresa.digitoConta.trim().substring(0, 1)
+        : _calcularDigitoConta(empresa.agencia, empresa.contaCorrente);
+    sb.write(digitoContaFinal);
 
     // [033-041] Conta cobrança Destinatária FIDC — 9 zeros (campo reservado)
     sb.write(_numerico('0', 9));
@@ -322,8 +348,14 @@ class CnabSantander240Builder {
     sb.write(codJuros);
 
     // [119-126] Data de juros de mora — 8 num (DDMMAAAA)
-    if (codJuros != '3' && titulo.dataJuros != null) {
-      sb.write(ValidadorData.formatarCNAB(titulo.dataJuros));
+    // SANTANDER: Código 1 exige Data de Juros = Data de Vencimento
+    //            Código 2 pode ter data específica ou vencimento
+    //            Código 3 = Isento → 00000000
+    if (codJuros != '3') {
+      // Sempre usar a data de vencimento como data de início dos juros
+      // (regra Santander: mora começa no dia seguinte ao vencimento)
+      final dataJuros = titulo.dataVencimento ?? titulo.dataJuros ?? DateTime.now();
+      sb.write(ValidadorData.formatarCNAB(dataJuros));
     } else {
       sb.write('00000000');
     }

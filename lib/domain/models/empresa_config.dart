@@ -19,6 +19,7 @@ class EmpresaConfig {
   final String contaCorrente; // 8 dígitos
   final String digitoConta;
   final String codigoCedente; // 7 dígitos (convênio)
+  final String codigoTransmissao; // 15 chars — fornecido pelo Santander (Nota 3)
   final String carteira; // 101, 102, 104, 201
   final String modalidade; // 01, 02
   final int numeroSequencial; // 6 dígitos auto-incremento
@@ -39,6 +40,7 @@ class EmpresaConfig {
     required this.contaCorrente,
     required this.digitoConta,
     required this.codigoCedente,
+    this.codigoTransmissao = '',
     required this.carteira,
     required this.modalidade,
     required this.numeroSequencial,
@@ -68,6 +70,7 @@ class EmpresaConfig {
     String? contaCorrente,
     String? digitoConta,
     String? codigoCedente,
+    String? codigoTransmissao,
     String? carteira,
     String? modalidade,
     int? numeroSequencial,
@@ -88,6 +91,7 @@ class EmpresaConfig {
       contaCorrente: contaCorrente ?? this.contaCorrente,
       digitoConta: digitoConta ?? this.digitoConta,
       codigoCedente: codigoCedente ?? this.codigoCedente,
+      codigoTransmissao: codigoTransmissao ?? this.codigoTransmissao,
       carteira: carteira ?? this.carteira,
       modalidade: modalidade ?? this.modalidade,
       numeroSequencial: numeroSequencial ?? this.numeroSequencial,
@@ -110,6 +114,7 @@ class EmpresaConfig {
         'contaCorrente': contaCorrente,
         'digitoConta': digitoConta,
         'codigoCedente': codigoCedente,
+        'codigoTransmissao': codigoTransmissao,
         'carteira': carteira,
         'modalidade': modalidade,
         'numeroSequencial': numeroSequencial,
@@ -131,6 +136,7 @@ class EmpresaConfig {
         contaCorrente: json['contaCorrente'] ?? '',
         digitoConta: json['digitoConta'] ?? '',
         codigoCedente: json['codigoCedente'] ?? '',
+        codigoTransmissao: json['codigoTransmissao'] ?? '',
         carteira: json['carteira'] ?? '101',
         modalidade: json['modalidade'] ?? '01',
         numeroSequencial: json['numeroSequencial'] ?? 1,
@@ -152,6 +158,7 @@ class EmpresaConfig {
         contaCorrente: '',
         digitoConta: '',
         codigoCedente: '',
+        codigoTransmissao: '',
         carteira: '101',
         modalidade: '01',
         numeroSequencial: 1,
